@@ -1,55 +1,44 @@
 extern crate quicksilver;
 extern crate rand;
+extern crate rayon;
 
 use rand::distributions::{Distribution, Uniform};
+use rayon::prelude::*;
 
 use quicksilver::{
     Result,
-    geom::{Circle, Line, Rectangle, Transform, Triangle, Vector},
+    geom::{Rectangle, Vector},
     graphics::{Background::Col, Color},
     lifecycle::{Settings, State, Window, run},
 };
 
 struct GameState {
-    worlds: [World; 2],
-    counter: usize,
+    counter: i32,
+    temps: WorldComponent<Vec<i32>>,
+    target_temps: WorldComponent<Vec<i32>>,
 }
 
-struct World {
-    temps: Vec<i32>,
-    target_temps: Vec<i32>,
-}
-
-/*
 struct WorldComponent<T> {
-    phases: [T; 2],
+    phase_t: T,
+    phase_f: T,
     phase: bool,
 }
 
 impl<T> WorldComponent<T> {
-    fn current<T>(&self) -> &T {
-        &self.phases[0 ? self.phase : 1]
-    }
-
-    fn next<T>(&mut self) -> &mut T {
-        &mut self.phases[1 ? self.phase : 0]
+    fn phases(&mut self) -> (&T, &mut T) {
+        if self.phase {
+            (&self.phase_t, &mut self.phase_f)
+        } else {
+            (&self.phase_f, &mut self.phase_t)
+        }
     }
 
     fn swap(&mut self) {
         self.phase = !self.phase
     }
 }
-*/
 
 impl GameState {
-    fn current_world(&self) -> &World {
-        &self.worlds[self.counter % 2]
-    }
-
-    fn next_world(&mut self) -> &mut World {
-        &mut self.worlds[(self.counter + 1) % 2]
-    }
-
     fn increment(&mut self) {
         self.counter += 1;
     }
@@ -62,84 +51,94 @@ impl State for GameState {
             for y in 0..100 {
                 let distance_from_equator = (50 - y as i32).abs();
                 temps[x * 100 + y] = 100 - 2 * distance_from_equator;
-                //temps.push(100 -(2 * (50 - y as i8).abs()));
             }
         }
         Ok(GameState {
-            worlds: [
-                World {
-                    temps: temps.clone(),
-                    target_temps: temps.clone(),
-                },
-                World {
-                    temps: temps.clone(),
-                    target_temps: temps,
-                },
-            ],
+            temps: WorldComponent {
+                phase_t: temps.clone(),
+                phase_f: temps.clone(),
+                phase: true,
+            },
+            target_temps: WorldComponent {
+                phase_t: temps.clone(),
+                phase_f: temps,
+                phase: true,
+            },
             counter: 0,
         })
     }
 
-    fn update(&mut self, window: &mut Window) -> Result<()> {
-        //let current = &self.worlds[self.current];
-        //let mut next = &mut self.worlds[(self.current + 1) % 2];
-        // TODO update target temps based on time of year
+    fn update(&mut self, _window: &mut Window) -> Result<()> {
+        {
+            let (temps, next_temps) = self.temps.phases();
+            let (target_temps, next_target_temps) = self.target_temps.phases();
+            // TODO update target temps based on time of year
 
-        if self.counter % 11 == 0 {
-            let mut next_temp;
-            let mut divisor;
+            if self.counter % 10 == 0 {
+                let equator = ((500 - (self.counter % 1000)).abs() - 250) / 30 + 50;
+                next_target_temps.par_iter_mut().enumerate().for_each(|(n, next_target_temp)| {
+                    let y = n % 100;
+                    let distance_from_equator = (equator - y as i32).abs();
+                    *next_target_temp = 100 - 2 * distance_from_equator;
+                });
 
-            let mut rng = rand::thread_rng();
-            let temp_sampler = Uniform::from(-10..10);
-            for i in 0..100 {
-                for j in 0..100 {
-                    next_temp = self.current_world().temps[i * 100 + j];
-                    divisor = 1;
+
+                let temp_sampler = Uniform::from(-10..10);
+                next_temps.par_iter_mut().enumerate().for_each(|(n, next_temp)| {
+                    let mut rng = rand::thread_rng();
+                    let i = n / 100;
+                    let j = n % 100;
+
+                    let mut divisor = 1;
+                    *next_temp = 0;
+                    *next_temp += temps[i * 100 + j];
 
                     if i != 99 {
-                        next_temp += self.current_world().temps[(i + 1) * 100 + j];
+                        *next_temp += temps[(i + 1) * 100 + j];
                         divisor += 1;
                     }
                     if i != 0 {
-                        next_temp += self.current_world().temps[(i - 1) * 100 + j];
+                        *next_temp += temps[(i - 1) * 100 + j];
                         divisor += 1;
                     }
 
                     if j != 99 {
-                        next_temp += self.current_world().temps[i * 100 + j + 1];
+                        *next_temp += temps[i * 100 + j + 1];
                         divisor += 1;
                         if i != 99 {
-                            next_temp += self.current_world().temps[(i + 1) * 100 + j + 1];
+                            *next_temp += temps[(i + 1) * 100 + j + 1];
                             divisor += 1;
                         }
                         if i != 0 {
-                            next_temp += self.current_world().temps[(i - 1) * 100 + j + 1];
+                            *next_temp += temps[(i - 1) * 100 + j + 1];
                             divisor += 1;
                         }
                     }
 
                     if j != 0 {
-                        next_temp += self.current_world().temps[i * 100 + j - 1];
+                        *next_temp += temps[i * 100 + j - 1];
                         divisor += 1;
                         if i != 99 {
-                            next_temp += self.current_world().temps[(i + 1) * 100 + j - 1];
+                            *next_temp += temps[(i + 1) * 100 + j - 1];
                             divisor += 1;
                         }
                         if i != 0 {
-                            next_temp += self.current_world().temps[(i - 1) * 100 + j - 1];
+                            *next_temp += temps[(i - 1) * 100 + j - 1];
                             divisor += 1;
                         }
                     }
-                    next_temp += self.current_world().target_temps[i * 100 + j];
-                    next_temp /= divisor + 1;
-                    next_temp += temp_sampler.sample(&mut rng);
-
-                    self.next_world().temps[i * 100 + j] = next_temp;
-                }
+                    *next_temp += target_temps[i * 100 + j];
+                    *next_temp /= divisor + 1;
+                    *next_temp += temp_sampler.sample(&mut rng);
+                });
             }
         }
 
-        //self.current = (self.current + 1) % 2;
+        if self.counter % 10 == 0 {
+            self.temps.swap();
+            self.target_temps.swap();
+        }
+
         self.increment();
         Ok(())
     }
@@ -147,12 +146,12 @@ impl State for GameState {
     fn draw(&mut self, window: &mut Window) -> Result<()> {
         window.clear(Color::BLACK)?;
 
+        let (temps, _) = self.temps.phases();
         for x in 0..100 {
             for y in 0..100 {
-                let temp = self.current_world().temps[x * 100 + y];
                 window.draw(
                     &Rectangle::new((x as u32 * 6 + 100, y as u32 * 6), (6, 6)), 
-                    Col(heatmap_value(temp, 0, 100, vec![Color::BLUE, Color::CYAN, Color::GREEN, Color::YELLOW, Color::RED])),
+                    Col(heatmap_value(temps[x * 100 + y], 0, 100, vec![Color::BLUE, Color::CYAN, Color::GREEN, Color::YELLOW, Color::RED])),
                 );
             }
         }
