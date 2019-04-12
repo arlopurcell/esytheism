@@ -12,7 +12,7 @@ use quicksilver::{
     lifecycle::{Settings, State, Window, run},
 };
 
-const WORLD_SIZE: usize = 100;
+const WORLD_SIZE: usize = 200;
 const TICKS_PER_DAY: i32 = 10;
 const DAYS_PER_YEAR: i32 = 100;
 const TICKS_PER_YEAR: i32 = TICKS_PER_DAY * DAYS_PER_YEAR;
