@@ -39,40 +39,10 @@ impl<T> WorldComponent<T> {
 }
 
 impl GameState {
-    fn increment(&mut self) {
-        self.counter += 1;
-    }
-}
-
-impl State for GameState {
-    fn new() -> Result<GameState> {
-        let mut temps = vec![0; 100 * 100];
-        for x in 0..100 {
-            for y in 0..100 {
-                let distance_from_equator = (50 - y as i32).abs();
-                temps[x * 100 + y] = 100 - 2 * distance_from_equator;
-            }
-        }
-        Ok(GameState {
-            temps: WorldComponent {
-                phase_t: temps.clone(),
-                phase_f: temps.clone(),
-                phase: true,
-            },
-            target_temps: WorldComponent {
-                phase_t: temps.clone(),
-                phase_f: temps,
-                phase: true,
-            },
-            counter: 0,
-        })
-    }
-
-    fn update(&mut self, _window: &mut Window) -> Result<()> {
+    fn tick(&mut self) {
         {
             let (temps, next_temps) = self.temps.phases();
             let (target_temps, next_target_temps) = self.target_temps.phases();
-            // TODO update target temps based on time of year
 
             if self.counter % 10 == 0 {
                 let equator = ((500 - (self.counter % 1000)).abs() - 250) / 30 + 50;
@@ -139,7 +109,36 @@ impl State for GameState {
             self.target_temps.swap();
         }
 
-        self.increment();
+        self.counter += 1;
+    }
+}
+
+impl State for GameState {
+    fn new() -> Result<GameState> {
+        let mut temps = vec![0; 100 * 100];
+        for x in 0..100 {
+            for y in 0..100 {
+                let distance_from_equator = (50 - y as i32).abs();
+                temps[x * 100 + y] = 100 - 2 * distance_from_equator;
+            }
+        }
+        Ok(GameState {
+            temps: WorldComponent {
+                phase_t: temps.clone(),
+                phase_f: temps.clone(),
+                phase: true,
+            },
+            target_temps: WorldComponent {
+                phase_t: temps.clone(),
+                phase_f: temps,
+                phase: true,
+            },
+            counter: 0,
+        })
+    }
+
+    fn update(&mut self, _window: &mut Window) -> Result<()> {
+        self.tick();
         Ok(())
     }
 
