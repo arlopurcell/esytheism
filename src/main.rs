@@ -12,6 +12,12 @@ use quicksilver::{
     lifecycle::{Settings, State, Window, run},
 };
 
+const WORLD_SIZE: usize = 100;
+const TICKS_PER_DAY: i32 = 10;
+const DAYS_PER_YEAR: i32 = 100;
+const TICKS_PER_YEAR: i32 = TICKS_PER_DAY * DAYS_PER_YEAR;
+const MAX_TEMP: i32 = 100;
+
 struct GameState {
     counter: i32,
     temps: WorldComponent<Vec<i32>>,
@@ -44,67 +50,67 @@ impl GameState {
             let (temps, next_temps) = self.temps.phases();
             let (target_temps, next_target_temps) = self.target_temps.phases();
 
-            if self.counter % 10 == 0 {
-                let equator = ((500 - (self.counter % 1000)).abs() - 250) / 30 + 50;
+            if self.counter % TICKS_PER_DAY == 0 {
+                let equator = ((((TICKS_PER_YEAR / 2) - self.counter % TICKS_PER_YEAR).abs() - (TICKS_PER_YEAR / 4)) * (WORLD_SIZE as i32 / 3) / TICKS_PER_YEAR) + (WORLD_SIZE as i32 / 2);
                 next_target_temps.par_iter_mut().enumerate().for_each(|(n, next_target_temp)| {
-                    let y = n % 100;
+                    let y = n / WORLD_SIZE;
                     let distance_from_equator = (equator - y as i32).abs();
-                    *next_target_temp = 100 - 2 * distance_from_equator;
+                    *next_target_temp = WORLD_SIZE as i32 - 2 * distance_from_equator;
                 });
 
 
                 let temp_sampler = Uniform::from(-10..10);
                 next_temps.par_iter_mut().enumerate().for_each(|(n, next_temp)| {
                     let mut rng = rand::thread_rng();
-                    let i = n / 100;
-                    let j = n % 100;
+                    let i = n / WORLD_SIZE;
+                    let j = n % WORLD_SIZE;
 
                     let mut divisor = 1;
                     *next_temp = 0;
-                    *next_temp += temps[i * 100 + j];
+                    *next_temp += temps[i * WORLD_SIZE + j];
 
-                    if i != 99 {
-                        *next_temp += temps[(i + 1) * 100 + j];
+                    if i != (WORLD_SIZE - 1) {
+                        *next_temp += temps[(i + 1) * WORLD_SIZE + j];
                         divisor += 1;
                     }
                     if i != 0 {
-                        *next_temp += temps[(i - 1) * 100 + j];
+                        *next_temp += temps[(i - 1) * WORLD_SIZE + j];
                         divisor += 1;
                     }
 
-                    if j != 99 {
-                        *next_temp += temps[i * 100 + j + 1];
+                    if j != (WORLD_SIZE - 1) {
+                        *next_temp += temps[i * WORLD_SIZE + j + 1];
                         divisor += 1;
-                        if i != 99 {
-                            *next_temp += temps[(i + 1) * 100 + j + 1];
+                        if i != (WORLD_SIZE - 1) {
+                            *next_temp += temps[(i + 1) * WORLD_SIZE + j + 1];
                             divisor += 1;
                         }
                         if i != 0 {
-                            *next_temp += temps[(i - 1) * 100 + j + 1];
+                            *next_temp += temps[(i - 1) * WORLD_SIZE + j + 1];
                             divisor += 1;
                         }
                     }
 
                     if j != 0 {
-                        *next_temp += temps[i * 100 + j - 1];
+                        *next_temp += temps[i * WORLD_SIZE + j - 1];
                         divisor += 1;
-                        if i != 99 {
-                            *next_temp += temps[(i + 1) * 100 + j - 1];
+                        if i != (WORLD_SIZE - 1) {
+                            *next_temp += temps[(i + 1) * WORLD_SIZE + j - 1];
                             divisor += 1;
                         }
                         if i != 0 {
-                            *next_temp += temps[(i - 1) * 100 + j - 1];
+                            *next_temp += temps[(i - 1) * WORLD_SIZE + j - 1];
                             divisor += 1;
                         }
                     }
-                    *next_temp += target_temps[i * 100 + j];
+                    *next_temp += target_temps[i * WORLD_SIZE + j];
                     *next_temp /= divisor + 1;
                     *next_temp += temp_sampler.sample(&mut rng);
                 });
             }
         }
 
-        if self.counter % 10 == 0 {
+        if self.counter % TICKS_PER_DAY == 0 {
             self.temps.swap();
             self.target_temps.swap();
         }
@@ -115,11 +121,11 @@ impl GameState {
 
 impl State for GameState {
     fn new() -> Result<GameState> {
-        let mut temps = vec![0; 100 * 100];
-        for x in 0..100 {
-            for y in 0..100 {
-                let distance_from_equator = (50 - y as i32).abs();
-                temps[x * 100 + y] = 100 - 2 * distance_from_equator;
+        let mut temps = vec![0; WORLD_SIZE * WORLD_SIZE];
+        for x in 0..WORLD_SIZE {
+            for y in 0..WORLD_SIZE {
+                let distance_from_equator = ((WORLD_SIZE as i32 * 2 / 3) - y as i32).abs(); // start in winter
+                temps[y * WORLD_SIZE + x] = MAX_TEMP - 2 * distance_from_equator;
             }
         }
         Ok(GameState {
@@ -146,11 +152,11 @@ impl State for GameState {
         window.clear(Color::BLACK)?;
 
         let (temps, _) = self.temps.phases();
-        for x in 0..100 {
-            for y in 0..100 {
+        for x in 0..WORLD_SIZE {
+            for y in 0..WORLD_SIZE {
                 window.draw(
-                    &Rectangle::new((x as u32 * 6 + 100, y as u32 * 6), (6, 6)), 
-                    Col(heatmap_value(temps[x * 100 + y], 0, 100, vec![Color::BLUE, Color::CYAN, Color::GREEN, Color::YELLOW, Color::RED])),
+                    &Rectangle::new((x as i32 * 6 + WORLD_SIZE as i32, y as i32 * 6), (6, 6)), 
+                    Col(heatmap_value(temps[y * WORLD_SIZE + x], 0, MAX_TEMP, vec![Color::BLUE, Color::CYAN, Color::GREEN, Color::YELLOW, Color::RED])),
                 );
             }
         }
