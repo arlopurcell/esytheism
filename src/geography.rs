@@ -46,12 +46,12 @@ impl Geography {
     }
 
     pub fn find_path(&self, start: TilePoint, goal: TilePoint) -> Option<Vec<TilePoint>> {
-        let mut closedSet = HashSet::new();
+        let mut closed_set = HashSet::new();
 
-        let mut cameFrom = HashMap::new();
+        let mut came_from = HashMap::new();
 
-        let mut gScore = HashMap::new();
-        gScore.insert(start, 0);
+        let mut g_score = HashMap::new();
+        g_score.insert(start, 0);
 
         let goal_distance_squared = |a: &TilePoint| {
             let x = a.x as i32 - goal.x as i32;
@@ -61,29 +61,29 @@ impl Geography {
         //let mut fScore = HashMap::new();
         //fScore.insert(start, goal_distance_squared(&start));
 
-        let mut openSet = BinaryHeap::new();
-        openSet.push(PathState {
+        let mut open_set = BinaryHeap::new();
+        open_set.push(PathState {
             cost: goal_distance_squared(&start),
             position: start,
         });
 
-        while let Some(current) = openSet.pop() {
+        while let Some(current) = open_set.pop() {
             if current.position == goal {
-                return Some(reconstruct_path(cameFrom, &current.position));
+                return Some(reconstruct_path(came_from, &current.position));
             }
-            closedSet.insert(current.position);
+            closed_set.insert(current.position);
 
             for neighbor in self.get_neighbors(&current.position) {
-                if !closedSet.contains(&neighbor) {
-                    let tentative_gScore = gScore.get(&current.position).unwrap().saturating_add(self.get_cost(&neighbor));
-                    let old_gScore = gScore.get(&neighbor).unwrap_or(&u32::MAX);
-                    if tentative_gScore < *old_gScore {
-                        openSet.push(PathState {
-                            cost: tentative_gScore + goal_distance_squared(&neighbor),
+                if !closed_set.contains(&neighbor) {
+                    let tentative_g_score = g_score.get(&current.position).unwrap().saturating_add(self.get_cost(&neighbor));
+                    let old_g_score = g_score.get(&neighbor).unwrap_or(&u32::MAX);
+                    if tentative_g_score < *old_g_score {
+                        open_set.push(PathState {
+                            cost: tentative_g_score + goal_distance_squared(&neighbor),
                             position: neighbor,
                         });
-                        cameFrom.insert(neighbor, current.position);
-                        gScore.insert(neighbor, tentative_gScore);
+                        came_from.insert(neighbor, current.position);
+                        g_score.insert(neighbor, tentative_g_score);
                     }
                 }
             }
@@ -115,10 +115,10 @@ impl Geography {
     }
 }
 
-fn reconstruct_path(cameFrom: HashMap<TilePoint, TilePoint>, goal: &TilePoint) -> Vec<TilePoint> {
+fn reconstruct_path(came_from: HashMap<TilePoint, TilePoint>, goal: &TilePoint) -> Vec<TilePoint> {
     let mut result = vec![*goal];
     let mut current = goal;
-    while let Some(prev) = cameFrom.get(&current) {
+    while let Some(prev) = came_from.get(&current) {
         current = prev;
         result.push(*current);
     }

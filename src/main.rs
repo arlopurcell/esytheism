@@ -1,24 +1,24 @@
 extern crate quicksilver;
-extern crate rand;
-extern crate rayon;
+//extern crate rand;
+//extern crate rayon;
 
 mod geography;
 //mod human;
 
-use rand::distributions::{Distribution, Uniform, Normal};
-use rayon::prelude::*;
+//use rand::distributions::{Distribution, Uniform, Normal};
+//use rayon::prelude::*;
 
-use quicksilver::{
-    Result,
-    geom::{Rectangle, Vector},
-    graphics::{Background::Col, Color},
-    input::{ButtonState, Key},
-    lifecycle::{Event, Settings, State, Window, run},
-};
+// use quicksilver::{
+//     Result,
+//     geom::{Rectangle, Vector},
+//     graphics::{Background::Col, Color},
+//     input::{ButtonState, Key},
+//     lifecycle::{Event, Settings, State, Window, run},
+// };
 
 use std::fs::File;
 use std::io::prelude::*;
-use std::io::{self, BufReader};
+use std::io::BufReader;
 
 use std::u32;
 
