@@ -2,9 +2,10 @@ use num_traits::ops::saturating::Saturating;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::u32;
+use quicksilver::geom::Vector;
 
 pub struct Geography {
-    tile_costs: Vec<Vec<u32>>,
+    pub tile_costs: Vec<Vec<u32>>,
     width: usize,
     height: usize,
 }
@@ -126,11 +127,15 @@ fn reconstruct_path(came_from: HashMap<TilePoint, TilePoint>, goal: &TilePoint) 
         current = prev;
         result.push(*current);
     }
-    result.into_iter().rev().collect()
+    result
 }
 
 impl TilePoint {
     pub fn new(x: usize, y: usize) -> TilePoint {
         TilePoint { x: x, y: y }
+    }
+
+    pub fn from_vector(v: &Vector) -> TilePoint {
+        TilePoint { x: v.x.floor() as usize, y: v.y.floor() as usize }
     }
 }
