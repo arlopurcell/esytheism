@@ -58,7 +58,15 @@ fn main() {
     let file = File::open("data/test.map").unwrap();
     let reader = BufReader::new(file);
 
-    let mut tile_costs: Vec<Vec<u32>> = reader.lines().filter_map(|line| line.ok()).map(|line| line.chars().map(|c| if c == '.' { 1 } else { u32::MAX }).collect()).collect();
+    let mut tile_costs: Vec<Vec<u32>> = reader
+        .lines()
+        .filter_map(|line| line.ok())
+        .map(|line| {
+            line.chars()
+                .map(|c| if c == '.' { 1 } else { u32::MAX })
+                .collect()
+        })
+        .collect();
 
     // Transpose
     for y in 0..40 {
@@ -70,14 +78,22 @@ fn main() {
     }
 
     let geo = Geography::new(tile_costs.clone(), 40, 40);
-    let path = geo.find_path(
-        TilePoint::new(1, 39),
-        TilePoint::new(16, 35)
-    ).unwrap();
+    let path = geo
+        .find_path(TilePoint::new(1, 39), TilePoint::new(16, 35))
+        .unwrap();
 
     for y in 0..40 {
         for x in 0..40 {
-            print!("{}", if path.iter().any(|t| *t == TilePoint::new(x, y)) { "x" } else if tile_costs[x][y] == 1 { "." } else { "+" })
+            print!(
+                "{}",
+                if path.iter().any(|t| *t == TilePoint::new(x, y)) {
+                    "x"
+                } else if tile_costs[x][y] == 1 {
+                    "."
+                } else {
+                    "+"
+                }
+            )
         }
         println!();
     }

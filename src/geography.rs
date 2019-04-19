@@ -1,7 +1,7 @@
-use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet, BinaryHeap};
-use std::u32;
 use num_traits::ops::saturating::Saturating;
+use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::u32;
 
 pub struct Geography {
     tile_costs: Vec<Vec<u32>>,
@@ -23,7 +23,9 @@ struct PathState {
 
 impl Ord for PathState {
     fn cmp(&self, other: &PathState) -> Ordering {
-        other.cost.cmp(&self.cost)
+        other
+            .cost
+            .cmp(&self.cost)
             .then_with(|| self.position.x.cmp(&other.position.x))
             .then_with(|| self.position.y.cmp(&other.position.y))
     }
@@ -36,7 +38,6 @@ impl PartialOrd for PathState {
 }
 
 impl Geography {
-
     pub fn new(tile_costs: Vec<Vec<u32>>, width: usize, height: usize) -> Geography {
         Geography {
             tile_costs: tile_costs,
@@ -75,7 +76,10 @@ impl Geography {
 
             for neighbor in self.get_neighbors(&current.position) {
                 if !closed_set.contains(&neighbor) {
-                    let tentative_g_score = g_score.get(&current.position).unwrap().saturating_add(self.get_cost(&neighbor));
+                    let tentative_g_score = g_score
+                        .get(&current.position)
+                        .unwrap()
+                        .saturating_add(self.get_cost(&neighbor));
                     let old_g_score = g_score.get(&neighbor).unwrap_or(&u32::MAX);
                     if tentative_g_score < *old_g_score {
                         open_set.push(PathState {
@@ -88,10 +92,10 @@ impl Geography {
                 }
             }
         }
-        
+
         None
     }
-    
+
     fn get_neighbors(&self, point: &TilePoint) -> Vec<TilePoint> {
         let mut neighbors = Vec::new();
         if point.x > 0 {
@@ -127,10 +131,6 @@ fn reconstruct_path(came_from: HashMap<TilePoint, TilePoint>, goal: &TilePoint) 
 
 impl TilePoint {
     pub fn new(x: usize, y: usize) -> TilePoint {
-        TilePoint {
-            x: x,
-            y: y,
-        }
+        TilePoint { x: x, y: y }
     }
 }
-
