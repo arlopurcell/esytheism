@@ -36,26 +36,25 @@ impl State for GameState {
             .filter_map(|line| line.ok())
             .map(|line| {
                 line.chars()
-                    .map(|c| if c == '.' { 1 } else { u32::MAX })
+                    .map(|c| match c {
+                        '_' => 1,
+                        '.' => 10,
+                        _ => u32::MAX,
+                    })
                     .collect()
             })
             .collect();
 
         let mut tile_costs = vec![vec![1; 60]; 80];
-
-        for i in 0..30 {
-            for j in 0..40 {
-                tile_costs[2*j][2*i] = raw_data[i][j];
-                tile_costs[2*j+1][2*i] = raw_data[i][j];
-                tile_costs[2*j][2*i+1] = raw_data[i][j];
-                tile_costs[2*j+1][2*i+1] = raw_data[i][j];
+        for i in 0..60 {
+            for j in 0..80 {
+                tile_costs[j][i] = raw_data[i][j];
             }
         }
 
         let geo = Geography::new(tile_costs.clone(), 80, 60);
 
-        let mut human = Human::new(Vector::new(2.5, 57.5));
-        human.set_goal(Vector::new(32.5, 50.5), &geo);
+        let human = Human::new(Vector::new(40.5, 40.0));
 
         Ok(GameState {
             geography: geo,
@@ -73,20 +72,36 @@ impl State for GameState {
     // }
 
     fn update(&mut self, _window: &mut Window) -> Result<()> {
-        self.humans.iter_mut().for_each(|human| human.update());
+        let geography = &self.geography;
+        self.humans.iter_mut().for_each(|human| {
+            human.think(geography);
+            human.act();
+        });
         Ok(())
     }
 
     fn draw(&mut self, window: &mut Window) -> Result<()> {
-        window.clear(Color::BLUE)?;
+        window.clear(Color::BLACK)?;
         for x in 0..80 {
             for y in 0..60 {
                 let cost = self.geography.tile_costs[x][y] as u8;
-                window.draw(&Rectangle::new((x as u32 * 10, y as u32 * 10), (10, 10)), Col(Color::from_rgba(cost, cost, cost, 1.0)));
+                window.draw(&Rectangle::new((x as u32 * 10, y as u32 * 10), (10, 10)), Col(match cost {
+                    1 => Color::from_rgba(191, 156, 116, 1.0),
+                    10 => Color::from_rgba(127, 234, 117, 1.0),
+                    _ => Color::BLACK,
+                }));
             }
         }
         for human in &self.humans {
-            window.draw(&Circle::new(human.location * 10.0, 5.0), Col(Color::RED));
+            window.draw(&Circle::new(human.location() * 10.0, 5.0), Col(Color::RED));
+
+            // hunger bar
+            window.draw(&Rectangle::new((9.0, 569.0), (102.0, 22.0)), Col(Color::BLACK));
+            window.draw(&Rectangle::new((10.0, 570.0), (100.0 - human.hunger, 20.0)), Col(Color::RED));
+
+            // fatigue bar
+            window.draw(&Rectangle::new((209.0, 569.0), (102.0, 22.0)), Col(Color::BLACK));
+            window.draw(&Rectangle::new((210.0, 570.0), (100.0 - human.fatigue, 20.0)), Col(Color::BLUE));
         }
         Ok(())
     }
