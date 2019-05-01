@@ -33,13 +33,14 @@ impl Inventory {
         while let Ok(msg) = self.receiver.try_recv() {
             match msg {
                 ItemMessage::Give(received_item, received_quantity) => self.do_give(received_item, received_quantity),
-                ItemMessage::Trade((received_item, received_quantity), (requested_item, requested_quantity), ack_sender) => if self.do_take(requested_item, requested_quantity) {
+                ItemMessage::Trade((received_item, received_quantity), (requested_item, requested_quantity), ack_sender) => if self.do_take_exact(requested_item, requested_quantity) {
                     let _ = ack_sender.send(ItemMessage::Give(requested_item, requested_quantity));
                     self.do_give(requested_item, received_quantity);
                 } else {
                     let _ = ack_sender.send(ItemMessage::Give(received_item, received_quantity));
                 },
-                ItemMessage::Take(taken_item, taken_quantity, ack_sender) => if self.do_take(taken_item, taken_quantity) {
+                ItemMessage::Take(taken_item, taken_quantity, ack_sender) => {
+                    let taken_quantity = self.do_take_up_to(taken_item, taken_quantity);
                     let _ = ack_sender.send(ItemMessage::Give(taken_item, taken_quantity));
                 },
             }
@@ -54,7 +55,7 @@ impl Inventory {
         }
     }
     
-    pub fn do_take(&mut self, taken_item: Item, taken_quantity: u32) -> bool {
+    pub fn do_take_exact(&mut self, taken_item: Item, taken_quantity: u32) -> bool {
         if let Some(existing_quantity) = self.items.get_mut(&taken_item) {
             if *existing_quantity >= taken_quantity {
                 *existing_quantity -= taken_quantity;
@@ -62,6 +63,16 @@ impl Inventory {
             }
         }
         false
+    }
+
+    pub fn do_take_up_to(&mut self, taken_item: Item, taken_quantity: u32) -> u32 {
+        if let Some(existing_quantity) = self.items.get_mut(&taken_item) {
+            let taken_quantity = taken_quantity.min(*existing_quantity);
+            *existing_quantity -= taken_quantity;
+            taken_quantity
+        } else {
+            0
+        }
     }
 
     pub fn count(&self, item: Item) -> u32 {

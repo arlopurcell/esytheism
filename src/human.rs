@@ -15,12 +15,6 @@ const FATIGUE_PER_TICK: f32 = 1.0 / ( // below is ticks per unit, so invert for 
     * (1.0 / 100.0) // day / units sleep
 );
 
-const HUNGER_PER_TICK: f32 = 1.0 / ( // below is ticks per unit, so invert for units per tick
-    (TICKS_PER_HOUR as f32)
-    * 8.0 // hours between meals
-    * (1.0 / 100.0) // day / units sleep
-);
-
 const SLEEP_PER_TICK: f32 = 1.0 / ( // below is ticks per unit, so invert for units per tick
     (TICKS_PER_HOUR as f32)
     * 6.0 // hours sleep / day
@@ -29,8 +23,13 @@ const SLEEP_PER_TICK: f32 = 1.0 / ( // below is ticks per unit, so invert for un
 
 enum Activity {
     Idle,
-    Eating,
+    Eating(EatingState),
     Sleeping,
+}
+
+enum EatingState {
+    Eating,
+    Finding,
 }
 
 pub struct Human {
@@ -38,6 +37,7 @@ pub struct Human {
     pub inventory: Inventory,
     pub fatigue: f32,
     pub hunger: f32,
+    owned_container_indeces: Vec<usize>, // should this be a HashSet to handle duplicates?
     speed: f32,
 }
 
@@ -46,7 +46,10 @@ pub struct Mind {
     state: Activity,
 
     home: Vector,
-    adjacent_container: Option<Sender<ItemMessage>>, 
+
+    had_breakfast: bool,
+    had_dinner: bool,
+    meal_size: u32,
 }
 
 #[derive(PartialEq)]
@@ -74,6 +77,41 @@ impl Human {
             speed: 0.1,
             fatigue: 80.0,
             hunger: 0.0,
+            owned_container_indeces: Vec::new(),
+        }
+    }
+
+    fn owned_item_count(&self, item: Item, world: &World) -> u32 {
+        let container_count: u32 = self.owned_container_indeces.iter().map(|&i| world.containers[i].inventory.count(item)).sum();
+        self.inventory.count(item) + container_count
+    }
+
+    pub fn give_container(&mut self, container_index: usize) {
+        self.owned_container_indeces.push(container_index)
+    }
+
+    fn daily_food(&self, world: &World) -> u32 {
+        let owned_food = self.owned_item_count(Item::Food, world);
+        if self.hunger < 80.0 {
+            40
+        } else if self.hunger < 110.0 {
+            if owned_food > 80 {
+                40
+            } else {
+                30
+            }
+        } else if self.hunger < 130.0 {
+            if owned_food > 60 {
+                30
+            } else {
+                20
+            }
+        } else {
+            if owned_food > 40 {
+                20
+            } else {
+                10
+            }
         }
     }
 }
@@ -86,7 +124,20 @@ impl Mind {
             state: Activity::Idle,
 
             home: Vector::new(63.5, 22.5),
-            adjacent_container: None,
+
+            had_breakfast: false,
+            had_dinner: false,
+            meal_size: 0,
+        }
+    }
+
+    // For debugging
+    pub fn state(&self) -> &'static str {
+        match &self.state {
+            Activity::Idle => "Idle",
+            Activity::Sleeping => "Sleeping",
+            Activity::Eating(EatingState::Eating) => "Eating",
+            Activity::Eating(EatingState::Finding) => "Find Food",
         }
     }
 
@@ -97,32 +148,61 @@ impl Mind {
     }
 
     pub fn think(&mut self, human: &Human, world: &World) {
-        match self.state {
-            Activity::Idle => if human.hunger > 80.0 {
-                self.state = Activity::Eating;
-            } else if human.fatigue > 80.0 {
-                self.state = Activity::Sleeping;
-            } else if self.current_path.is_empty() {
-                let mut rng = thread_rng();
-                if rng.gen::<f32>() > 0.99 {
-                    let normal = Normal::new(0.0, 5.0);
-                    self.set_goal(human, human.location + Vector::new(normal.sample(&mut rng) as f32, normal.sample(&mut rng) as f32), &world.geography);
-                }
-            },
-            Activity::Eating => if human.hunger <= 0.0 {
-                self.state = Activity::Idle;
-            } else if self.current_path.is_empty() && human.inventory.count(Item::Food) == 0 && self.adjacent_container.is_none() {
-                let mut food_containers: Vec<&Container> = world.containers.iter().filter(|container| container.inventory.count(Item::Food) > 0).collect();
-                food_containers.sort_by_key(|container| MinFloat(human.location.distance(container.location)));
-                if let Some(container) = food_containers.first() {
-                    if TilePoint::from_vector(&container.location) == TilePoint::from_vector(&human.location) {
-                        self.adjacent_container = Some(container.inventory.sender());
-                        // TODO set this back to none later
-                    } else {
-                        self.set_goal(human, container.location, &world.geography);
+        // percieve
+        if world.time.is_new_day() {
+            self.meal_size = human.daily_food(world) / 2;
+            self.had_breakfast = false;
+            self.had_dinner = false;
+        }
+
+        // think
+        match &self.state {
+            Activity::Idle => {
+                let current_hours = world.time.current_hour();
+                if current_hours > 6 && !self.had_breakfast {
+                    self.state = Activity::Eating(EatingState::Finding);
+                } else if current_hours > 17 && !self.had_dinner {
+                    self.state = Activity::Eating(EatingState::Finding);
+                } else if human.fatigue > 80.0 {
+                    // TODO sleep based on time of day
+                    self.state = Activity::Sleeping;
+                } else if self.current_path.is_empty() {
+                    let mut rng = thread_rng();
+                    if rng.gen::<f32>() > 0.99 {
+                        let normal = Normal::new(0.0, 5.0);
+                        self.set_goal(human, human.location + Vector::new(normal.sample(&mut rng) as f32, normal.sample(&mut rng) as f32), &world.geography);
                     }
                 }
             },
+
+            Activity::Eating(eating_state) => match eating_state {
+                EatingState::Finding => if self.current_path.is_empty() {
+                    let meal_size = self.meal_size.min(human.hunger as u32);
+                    if human.inventory.count(Item::Food) < meal_size {
+                        let mut food_containers: Vec<&Container> = human.owned_container_indeces.iter().map(|&i| &world.containers[i]).filter(|&container| container.inventory.count(Item::Food) > 0).collect();
+                        food_containers.sort_by_key(|container| MinFloat(human.location.distance(container.location)));
+                        if let Some(container) = food_containers.first() {
+                            if TilePoint::from_vector(&container.location) == TilePoint::from_vector(&human.location) {
+                                container.inventory.sender().send(ItemMessage::Take(Item::Food, meal_size, human.inventory.sender()));
+                                // TODO if message doesn't send, do something
+                            } else {
+                                self.set_goal(human, container.location, &world.geography);
+                            }
+                        }
+                    } else {
+                        self.state = Activity::Eating(EatingState::Eating);
+                    }
+                },
+                EatingState::Eating => if human.inventory.count(Item::Food) == 0 {
+                    if !self.had_breakfast {
+                        self.had_breakfast = true;
+                    } else {
+                        self.had_dinner = true;
+                    }
+                    self.state = Activity::Idle;
+                },
+            },
+
             Activity::Sleeping => if human.fatigue <= 0.0 {
                 self.state = Activity::Idle;
             } else if TilePoint::from_vector(&self.home) != TilePoint::from_vector(&human.location) && self.current_path.is_empty() {
@@ -132,27 +212,32 @@ impl Mind {
     }
 
     pub fn act(&mut self, human: &mut Human) {
-        human.inventory.receive();
-        match self.state {
-            Activity::Eating => {
-                if human.inventory.do_take(Item::Food, 1) {
+        match &self.state {
+            Activity::Eating(eating_state) => match eating_state {
+                EatingState::Eating => if human.inventory.do_take_exact(Item::Food, 1) {
                     human.hunger -= 1.0;
-                } else {
-                    if let Some(sender) = &self.adjacent_container {
-                        if sender.send(ItemMessage::Take(Item::Food, 1, human.inventory.sender())).is_err() {
-                            self.adjacent_container = None;
-                        }
-                    }
-                }
+                },
+                EatingState::Finding => (), // just traveling
             },
+
             Activity::Sleeping => if self.current_path.is_empty() {
                 human.fatigue -= SLEEP_PER_TICK
-            } else {
             },
             _ => (),
         }
+        // TODO make these on a curve (get tired/hungry slower when you're low)
         human.fatigue += FATIGUE_PER_TICK;
-        human.hunger += HUNGER_PER_TICK;
+
+        if human.hunger < 80.0 {
+            human.hunger += 40.0 / (TICKS_PER_HOUR as f32 * 24.0);
+        } else if human.hunger < 110.0 {
+            human.hunger += 30.0 / (TICKS_PER_HOUR as f32 * 24.0);
+        } else if human.hunger < 130.0 {
+            human.hunger += 20.0 / (TICKS_PER_HOUR as f32 * 24.0);
+        } else {
+            human.hunger += 10.0 / (TICKS_PER_HOUR as f32 * 24.0);
+        }
+
         self.travel(human);
     }
     
@@ -165,13 +250,11 @@ impl Mind {
         }
 
         if let Some(next_tile) = self.current_path.last() {
+            // TODO aim for middle of nearest edge for smoother pathing
             // Aim for middle of the tile
             let goal = Vector::new(next_tile.x as f32 + 0.5, next_tile.y as f32 + 0.5);
             let direct_path = goal - human.location;
             human.location += direct_path.with_len(human.speed);
-
-            // Clear memory of anything regarding location
-            self.adjacent_container = None;
         }
     }
 
