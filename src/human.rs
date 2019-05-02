@@ -1,5 +1,5 @@
 use crate::geography::{Geography, TilePoint};
-use crate::world::{World, Container, TICKS_PER_HOUR};
+use crate::world::{World, Container, TICKS_PER_MINUTE};
 use crate::item::{Item, Inventory, ItemMessage};
 
 use std::sync::mpsc::Sender;
@@ -10,13 +10,15 @@ use rand::prelude::*;
 use rand::distributions::{Normal, Distribution};
 
 const FATIGUE_PER_TICK: f32 = 1.0 / ( // below is ticks per unit, so invert for units per tick
-    (TICKS_PER_HOUR as f32)
+    (TICKS_PER_MINUTE as f32)
+    * 60.0
     * 18.0 // hours non-sleep / day
     * (1.0 / 100.0) // day / units sleep
 );
 
 const SLEEP_PER_TICK: f32 = 1.0 / ( // below is ticks per unit, so invert for units per tick
-    (TICKS_PER_HOUR as f32)
+    (TICKS_PER_MINUTE as f32)
+    * 60.0
     * 6.0 // hours sleep / day
     * (1.0 / 100.0) // day / units sleep
 ) + FATIGUE_PER_TICK; // make up for fatigue added even while sleeping
@@ -73,7 +75,7 @@ impl Human {
     pub fn new(location: Vector) -> Human {
         Human {
             location: location,
-            inventory: Inventory::new(),
+            inventory: Inventory::new(100.0),
             speed: 0.1,
             fatigue: 80.0,
             hunger: 0.0,
@@ -147,6 +149,18 @@ impl Mind {
         self.current_path = geography.find_path(start, goal).unwrap_or(Vec::new());
     }
 
+    // TODO function to calculate value of items based on how much you have stored (exponential decay)
+    // only want Wood if you're a crafter
+
+    // TODO go sell at market if you have surplus of the thing you make
+    // TODO go buy at market if you have money and free time
+    // (hard-coded market location for now)
+    
+    // TODO when selling, a store has X quanitity to sell and wants to sell it within Y hours.
+    // every minute or so, the store will update it's prices so that it is on target to just barely
+    // go out of stock at the end of time. This, and assuming buyers buy the (nearly) cheapest
+    // goods should simulate supply and demand economics well enough
+
     pub fn think(&mut self, human: &Human, world: &World) {
         // percieve
         if world.time.is_new_day() {
@@ -158,7 +172,7 @@ impl Mind {
         // think
         match &self.state {
             Activity::Idle => {
-                let current_hours = world.time.current_hour();
+                let current_hours = world.time.hour;
                 if current_hours > 6 && !self.had_breakfast {
                     self.state = Activity::Eating(EatingState::Finding);
                 } else if current_hours > 17 && !self.had_dinner {
@@ -229,13 +243,13 @@ impl Mind {
         human.fatigue += FATIGUE_PER_TICK;
 
         if human.hunger < 80.0 {
-            human.hunger += 40.0 / (TICKS_PER_HOUR as f32 * 24.0);
+            human.hunger += 40.0 / (TICKS_PER_MINUTE as f32 * 60.0 * 24.0);
         } else if human.hunger < 110.0 {
-            human.hunger += 30.0 / (TICKS_PER_HOUR as f32 * 24.0);
+            human.hunger += 30.0 / (TICKS_PER_MINUTE as f32 * 60.0 * 24.0);
         } else if human.hunger < 130.0 {
-            human.hunger += 20.0 / (TICKS_PER_HOUR as f32 * 24.0);
+            human.hunger += 20.0 / (TICKS_PER_MINUTE as f32 * 60.0 * 24.0);
         } else {
-            human.hunger += 10.0 / (TICKS_PER_HOUR as f32 * 24.0);
+            human.hunger += 10.0 / (TICKS_PER_MINUTE as f32 * 60.0 * 24.0);
         }
 
         self.travel(human);

@@ -2,6 +2,8 @@ mod geography;
 mod human;
 mod item;
 mod world;
+mod weather;
+mod plant;
 
 //use rand::distributions::{Distribution, Uniform, Normal};
 //use rayon::prelude::*;
@@ -24,6 +26,7 @@ use crate::geography::Geography;
 use crate::human::{Human, Mind};
 use crate::item::{Item, Inventory};
 use crate::world::{World, Container, Time};
+use crate::weather::Weather;
 
 struct GameState {
     world: World,
@@ -64,9 +67,9 @@ impl State for GameState {
 
         let mut food_box = Container {
             location: Vector::new(39.5, 19.5),
-            inventory: Inventory::new(),
+            inventory: Inventory::new(10e10),
         };
-        food_box.inventory.do_give(Item::Food, u32::MAX);
+        food_box.inventory.do_give_up_to(Item::Food, u32::MAX);
         human.give_container(0);
 
         let font = Asset::new(Font::load("anonymous_pro.ttf"));
@@ -77,6 +80,8 @@ impl State for GameState {
                 time: Time::new(), 
                 humans: vec![human],
                 containers: vec![food_box],
+                weather: Weather::new(),
+                crops: Vec::new(),
             },
             minds: vec![mind],
             font: font,
@@ -93,6 +98,13 @@ impl State for GameState {
     // }
 
     fn update(&mut self, _window: &mut Window) -> Result<()> {
+        if self.world.time.is_new_day() {
+            self.world.weather.update();
+            let (sun, rain) = (self.world.weather.sun(), self.world.weather.rain());
+            for crop in self.world.crops.iter_mut() {
+                crop.grow(sun, rain);
+            }
+        }
         for human in self.world.humans.iter_mut() {
             human.inventory.receive();
         }
@@ -107,6 +119,9 @@ impl State for GameState {
         }
         for container in self.world.containers.iter_mut() {
             container.inventory.receive();
+        }
+        for crop in self.world.crops.iter_mut() {
+            crop.update();
         }
         self.world.time.tick();
         
@@ -128,8 +143,8 @@ impl State for GameState {
         for human in &self.world.humans {
             window.draw(&Circle::new(human.location * 10.0, 5.0), Col(Color::RED));
             self.font.execute(|font| {
-                window.draw(&Rectangle::new((200, 550), (400, 50)), Col(Color::BLACK));
-                let style = FontStyle::new(48.0, Color::WHITE);
+                window.draw(&Rectangle::new((200, 550), (400, 40)), Col(Color::BLACK));
+                let style = FontStyle::new(36.0, Color::WHITE);
                 let text = format!("hunger: {:.2}", human.hunger);
                 let text_img = font.render(&text, &style).unwrap();
                 window.draw(&Rectangle::new((210, 553), text_img.area().size()), Img(&text_img));
@@ -152,11 +167,10 @@ impl State for GameState {
         
         let world_time = &self.world.time;
         self.font.execute(|font| {
-            window.draw(&Rectangle::new((200, 0), (400, 50)), Col(Color::BLACK));
-            let style = FontStyle::new(48.0, Color::WHITE);
-            let time_text = format!("Day {}, {:02}:{:02}", world_time.current_day(), world_time.current_hour(), world_time.current_minute());
-            let time_img = font.render(&time_text, &style).unwrap();
-            window.draw(&Rectangle::new((210, 3), time_img.area().size()), Img(&time_img));
+            window.draw(&Rectangle::new((570, 0), (230, 20)), Col(Color::BLACK));
+            let style = FontStyle::new(18.0, Color::WHITE);
+            let time_img = font.render(&world_time.date_string(), &style).unwrap();
+            window.draw(&Rectangle::new((572, 1), time_img.area().size()), Img(&time_img));
             Ok(())
         });
         Ok(())
