@@ -56,6 +56,7 @@ pub struct Mind {
     target_inventory_id: Option<usize>,
 
     wait: u32,
+    travel_vector: Option<Vector>,
 }
 
 #[derive(PartialEq)]
@@ -80,7 +81,7 @@ impl Human {
         Human {
             location: location,
             inventory_id: inventory_id,
-            speed: 0.2,
+            speed: 0.1,
             fatigue: 80.0,
             hunger: 0.0,
             owned_container_indeces: Vec::new(),
@@ -124,12 +125,12 @@ impl Human {
 
 
 impl Mind {
-    pub fn new() -> Mind {
+    pub fn new(home: Vector) -> Mind {
         Mind {
             current_path: Vec::new(),
             state: Activity::Idle,
 
-            home: Vector::new(63.5, 22.5),
+            home: home,
 
             had_breakfast: false,
             had_dinner: false,
@@ -138,6 +139,7 @@ impl Mind {
             target_inventory_id: None,
 
             wait: 0,
+            travel_vector: None,
         }
     }
 
@@ -237,6 +239,33 @@ impl Mind {
                     self.set_goal(human, self.home, &world.geography);
                 },
             }
+            self.update_travel(human);
+        }
+    }
+
+    pub fn update_travel(&mut self, human: &Human) {
+        if let Some(next_tile) = self.current_path.last() {
+            let current_tile = TilePoint::from_vector(&human.location);
+            if current_tile == *next_tile {
+                self.current_path.pop();
+            }
+        }
+
+        if let Some(next_tile) = self.current_path.last() {
+            let current_tile = TilePoint::from_vector(&human.location);
+            // aim for middle of nearest edge for smoother pathing
+            let goal = if current_tile.x > next_tile.x {
+                Vector::new(next_tile.x as f32 + 1.0, next_tile.y as f32 + 0.5)
+            } else if current_tile.x < next_tile.x {
+                Vector::new(next_tile.x as f32, next_tile.y as f32 + 0.5)
+            } else if current_tile.y > next_tile.y {
+                Vector::new(next_tile.x as f32 + 0.5, next_tile.y as f32 + 1.0)
+            } else {
+                Vector::new(next_tile.x as f32 + 0.5, next_tile.y as f32 + 0.0)
+            };
+            self.travel_vector = Some(goal - human.location);
+        } else {
+            self.travel_vector = None;
         }
     }
 
@@ -274,23 +303,11 @@ impl Mind {
             human.hunger += 10.0 / (TICKS_PER_MINUTE as f32 * 60.0 * 24.0);
         }
 
-        self.travel(human);
     }
     
-    fn travel(&mut self, human: &mut Human) {
-        if let Some(next_tile) = self.current_path.last() {
-            let current_tile = TilePoint::from_vector(&human.location);
-            if current_tile == *next_tile {
-                self.current_path.pop();
-            }
-        }
-
-        if let Some(next_tile) = self.current_path.last() {
-            // TODO aim for middle of nearest edge for smoother pathing
-            // Aim for middle of the tile
-            let goal = Vector::new(next_tile.x as f32 + 0.5, next_tile.y as f32 + 0.5);
-            let direct_path = goal - human.location;
-            human.location += direct_path.with_len(human.speed);
+    pub fn travel(&self, human: &mut Human, frames_per_tick: u8) {
+        if let Some(travel_vector) = self.travel_vector {
+            human.location += travel_vector.with_len(human.speed / frames_per_tick as f32);
         }
     }
 

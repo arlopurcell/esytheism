@@ -14,6 +14,8 @@ use quicksilver::{
     graphics::{Background::Col, Background::Img, Color, Image, Font, FontStyle},
     input::{ButtonState, Key},
     lifecycle::{Settings, State, Window, run, Asset, Event},
+    load_file,
+    Future,
 };
 
 use std::fs::File;
@@ -57,32 +59,9 @@ impl GameState {
 
 impl State for GameState {
     fn new() -> Result<GameState> {
-        let file = File::open("data/test.map").unwrap();
-        let reader = BufReader::new(file);
-
-        let raw_data: Vec<Vec<u32>> = reader
-            .lines()
-            .filter_map(|line| line.ok())
-            .map(|line| {
-                line.chars()
-                    .map(|c| match c {
-                        '_' => 1,
-                        '.' => 5,
-                        _ => u32::MAX,
-                    })
-                    .collect()
-            })
-            .collect();
-
-        let mut tile_costs = vec![vec![1; 60]; 80];
-        for i in 0..60 {
-            for j in 0..80 {
-                tile_costs[j][i] = raw_data[i][j];
-            }
-        }
+        let geo = load_file("data/test.map").map(|data| Geography::from_data(40, 30, &data)).wait().unwrap();
         
         let font = Asset::new(Font::load("anonymous_pro.ttf"));
-        let geo = Geography::new(tile_costs.clone(), 80, 60);
         let mut gs = GameState {
             world: World {
                 geography: geo,
@@ -102,11 +81,11 @@ impl State for GameState {
             counter: 0,
         };
 
-        let mut human = Human::new(Vector::new(50.5, 30.0), gs.create_inventory(100.0));
-        let mind = Mind::new();
+        let mut human = Human::new(Vector::new(25.5, 15.0), gs.create_inventory(100.0));
+        let mind = Mind::new(Vector::new(29.5, 14.5));
 
         let mut food_box = Container {
-            location: Vector::new(39.5, 19.5),
+            location: Vector::new(17.5, 9.5),
             inventory_id: gs.create_inventory(10e10),
         };
         gs.world.inventories[food_box.inventory_id].do_give_up_to(Item::Food, u32::MAX);
@@ -157,35 +136,50 @@ impl State for GameState {
             self.inventory_receivers.par_iter_mut().zip(self.world.inventories.par_iter_mut()).for_each_with(self.inventory_senders.clone(), |senders, (recv, inventory)| inventory.receive_all(recv, senders));
             self.world.time.tick();
         }
+        if !self.paused {
+            let updates_per_tick = self.updates_per_tick;
+            self.minds.par_iter_mut().zip(self.world.humans.par_iter_mut()).for_each(|(mind, human)| mind.travel(human, updates_per_tick));
+        }
         
         Ok(())
     }
 
     fn draw(&mut self, window: &mut Window) -> Result<()> {
         window.clear(Color::BLACK)?;
-        for x in 0..80 {
-            for y in 0..60 {
-                let cost = self.world.geography.tile_costs[x][y] as u8;
-                window.draw(&Rectangle::new((x as u32 * 10, y as u32 * 10), (10, 10)), Col(match cost {
+        for x in 0..self.world.geography.width {
+            for y in 0..self.world.geography.height {
+                let tile = &self.world.geography.tiles[x][y];
+                window.draw(&Rectangle::new((x as u32 * 20, y as u32 * 20), (20, 20)), Col(match tile.terrain_cost {
                     1 => Color::from_rgba(191, 156, 116, 1.0),
-                    5 => Color::from_rgba(127, 234, 117, 1.0),
-                    _ => Color::BLACK,
+                    _ => Color::from_rgba(127, 234, 117, 1.0),
                 }));
+                // draw walls
+                if tile.walls[0] {
+                    window.draw(&Rectangle::new((x as i32 * 20 - 1, y as i32 * 20 - 1), (22, 2)), Col(Color::BLACK));
+                }
+                if tile.walls[1] {
+                    window.draw(&Rectangle::new((x as i32 * 20 + 19, y as i32 * 20 - 1), (2, 22)), Col(Color::BLACK));
+                }
+                if tile.walls[2] {
+                    window.draw(&Rectangle::new((x as i32 * 20 - 1, y as i32 * 20  + 19), (22, 2)), Col(Color::BLACK));
+                }
+                if tile.walls[3] {
+                    window.draw(&Rectangle::new((x as i32 * 20 - 1, y as i32 * 20 - 1), (2, 22)), Col(Color::BLACK));
+                }
             }
         }
         for human in &self.world.humans {
-            window.draw(&Circle::new(human.location * 10.0, 5.0), Col(Color::RED));
-            self.font.execute(|font| {
-                window.draw(&Rectangle::new((200, 550), (400, 40)), Col(Color::BLACK));
-                let style = FontStyle::new(36.0, Color::WHITE);
-                let text = format!("hunger: {:.2}", human.hunger);
-                let text_img = font.render(&text, &style).unwrap();
-                window.draw(&Rectangle::new((210, 553), text_img.area().size()), Img(&text_img));
-                Ok(())
-            });
+            window.draw(&Circle::new(human.location * 20.0, 3.0), Col(Color::RED));
+            // self.font.execute(|font| {
+            //     window.draw(&Rectangle::new((200, 550), (400, 40)), Col(Color::BLACK));
+            //     let style = FontStyle::new(36.0, Color::WHITE);
+            //     let text = format!("hunger: {:.2}", human.hunger);
+            //     let text_img = font.render(&text, &style).unwrap();
+            //     window.draw(&Rectangle::new((210, 553), text_img.area().size()), Img(&text_img));
+            //     Ok(())
+            // });
         }
 
-        /*
         for mind in &self.minds {
             self.font.execute(|font| {
                 window.draw(&Rectangle::new((200, 550), (400, 50)), Col(Color::BLACK));
@@ -196,7 +190,6 @@ impl State for GameState {
                 Ok(())
             });
         }
-        */
         
         let world_time = &self.world.time;
         self.font.execute(|font| {
