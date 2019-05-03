@@ -157,6 +157,8 @@ impl Mind {
         self.current_path = geography.find_path(start, goal).unwrap_or(Vec::new());
     }
 
+    // TODO implement jobs (just farming first)
+    
     // TODO function to calculate value of items based on how much you have stored (exponential decay)
     // only want Wood if you're a crafter
 

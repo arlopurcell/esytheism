@@ -112,6 +112,8 @@ impl State for GameState {
         gs.world.inventories[food_box.inventory_id].do_give_up_to(Item::Food, u32::MAX);
         human.give_container(0);
 
+        // TODO add some crops
+
         gs.world.humans.push(human);
         gs.minds.push(mind);
         gs.world.containers.push(food_box);
@@ -126,13 +128,11 @@ impl State for GameState {
             },
             Event::Key(Key::Left, ButtonState::Pressed) => {
                 if self.updates_per_tick < 64 {
-                    // self.updates_per_tick = self.updates_per_tick.wrapping_mul(2);
                     self.updates_per_tick *= 2;
                 }
             }
             Event::Key(Key::Right, ButtonState::Pressed) => {
                 if self.updates_per_tick > 1 {
-                    // self.updates_per_tick = self.updates_per_tick.wrapping_div(2);
                     self.updates_per_tick /= 2;
                 }
             }
