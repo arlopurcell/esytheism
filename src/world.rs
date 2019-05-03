@@ -6,7 +6,7 @@ use crate::item::Inventory;
 use crate::weather::Weather;
 use crate::plant::Crop;
 
-pub const TICKS_PER_MINUTE: u8 = 3;
+pub const TICKS_PER_MINUTE: u8 = 1;
 
 pub struct World {
     pub geography: Geography,
@@ -15,11 +15,12 @@ pub struct World {
     pub time: Time,
     pub weather: Weather,
     pub crops: Vec<Crop>,
+    pub inventories: Vec<Inventory>,
 }
 
 pub struct Container {
     pub location: Vector,
-    pub inventory: Inventory,
+    pub inventory_id: usize,
 }
 
 pub struct Time {
@@ -104,7 +105,7 @@ impl Time {
             day=self.day + 1,
             year=self.year + 1,
             hour=self.hour,
-            minute=self.minute,
+            minute=(self.minute / 10) * 10,
         )
     }
 }

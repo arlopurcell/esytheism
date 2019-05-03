@@ -12,15 +12,15 @@ pub enum Item {
 }
 
 pub enum ItemMessage {
-    Give(Item, u32, Sender<ItemMessage>),
+    Give(Item, u32, usize),
     GiveOrDrop(Item, u32),
-    Trade((Item, u32), (Item, u32), Sender<ItemMessage>),
-    Take(Item, u32, Sender<ItemMessage>),
+    Trade((Item, u32), (Item, u32), usize),
+    Take(Item, u32, usize),
+    Remove(Item, u32),
 }
 
 pub struct Inventory {
-    receiver: Receiver<ItemMessage>,
-    sender: Sender<ItemMessage>,
+    // id: u32,
     items: HashMap<Item, u32>,
     capacity: f32,
 }
@@ -37,52 +37,47 @@ impl Item {
 
 impl Inventory {
     pub fn new(capacity: f32) -> Inventory {
-        let (sender, receiver) = channel();
         Inventory {
-            receiver: receiver,
-            sender: sender,
+            // id: id,
             items: HashMap::new(),
             capacity: capacity,
         }
     }
 
-    pub fn receive(&mut self) {
-        while let Ok(msg) = self.receiver.try_recv() {
-            self.process_msg(msg);
+    pub fn receive_all(&mut self, receiver: &Receiver<ItemMessage>, senders: &Vec<Sender<ItemMessage>>) {
+        while let Ok(msg) = receiver.try_recv() {
+            self.process_msg(msg, senders);
         }
     }
 
-    pub fn receive_one(&mut self) {
-        if let Ok(msg) = self.receiver.try_recv() {
-            self.process_msg(msg);
-        }
-    }
-
-    fn process_msg(&mut self, msg: ItemMessage) {
+    fn process_msg(&mut self, msg: ItemMessage, senders: &Vec<Sender<ItemMessage>>) {
         match msg {
-            ItemMessage::Give(received_item, received_quantity, ack_sender) => {
+            ItemMessage::Give(received_item, received_quantity, ack_sender_id) => {
                 let given_quantity = self.do_give_up_to(received_item, received_quantity);
                 let ungiven = received_quantity - given_quantity;
                 if ungiven > 0 {
-                    let _ = ack_sender.send(ItemMessage::GiveOrDrop(received_item, ungiven));
+                    let _ = senders[ack_sender_id].send(ItemMessage::GiveOrDrop(received_item, ungiven));
                 }
             },
             ItemMessage::GiveOrDrop(received_item, received_quantity) => {
                 self.do_give_up_to(received_item, received_quantity);
             },
-            ItemMessage::Trade((received_item, received_quantity), (requested_item, requested_quantity), ack_sender) => if self.do_take_exact(requested_item, requested_quantity) {
+            ItemMessage::Trade((received_item, received_quantity), (requested_item, requested_quantity), ack_sender_id) => if self.do_take_exact(requested_item, requested_quantity) {
                 if self.do_give_exact(received_item, received_quantity) {
-                    let _ = ack_sender.send(ItemMessage::GiveOrDrop(requested_item, requested_quantity));
+                    let _ = senders[ack_sender_id].send(ItemMessage::GiveOrDrop(requested_item, requested_quantity));
                 } else {
                     self.do_give_up_to(requested_item, requested_quantity);
-                    let _ = ack_sender.send(ItemMessage::GiveOrDrop(received_item, received_quantity));
+                    let _ = senders[ack_sender_id].send(ItemMessage::GiveOrDrop(received_item, received_quantity));
                 }
             } else {
-                let _ = ack_sender.send(ItemMessage::GiveOrDrop(received_item, received_quantity));
+                let _ = senders[ack_sender_id].send(ItemMessage::GiveOrDrop(received_item, received_quantity));
             },
-            ItemMessage::Take(taken_item, taken_quantity, ack_sender) => {
+            ItemMessage::Take(taken_item, taken_quantity, ack_sender_id) => {
                 let taken_quantity = self.do_take_up_to(taken_item, taken_quantity);
-                let _ = ack_sender.send(ItemMessage::GiveOrDrop(taken_item, taken_quantity));
+                let _ = senders[ack_sender_id].send(ItemMessage::GiveOrDrop(taken_item, taken_quantity));
+            },
+            ItemMessage::Remove(taken_item, taken_quantity) => {
+                let _ = self.do_take_up_to(taken_item, taken_quantity);
             },
         }
     }
@@ -141,10 +136,6 @@ impl Inventory {
 
     pub fn count(&self, item: Item) -> u32 {
         *self.items.get(&item).unwrap_or(&0)
-    }
-
-    pub fn sender(&self) -> Sender<ItemMessage> {
-        self.sender.clone()
     }
 
 }

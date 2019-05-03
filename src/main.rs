@@ -5,26 +5,31 @@ mod world;
 mod weather;
 mod plant;
 
-//use rand::distributions::{Distribution, Uniform, Normal};
-//use rayon::prelude::*;
+use rand::distributions::{Distribution, Uniform, Normal};
+use rayon::prelude::*;
 
 use quicksilver::{
     Result,
     geom::{Rectangle, Vector, Circle},
     graphics::{Background::Col, Background::Img, Color, Image, Font, FontStyle},
-    // input::{ButtonState, Key},
-    lifecycle::{Settings, State, Window, run, Asset},
+    input::{ButtonState, Key},
+    lifecycle::{Settings, State, Window, run, Asset, Event},
 };
 
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
+use std::sync::mpsc::{channel, Sender, Receiver};
+use std::collections::HashMap;
+use std::num::Wrapping;
 
 use std::u32;
 
+use rand::prelude::*;
+
 use crate::geography::Geography;
 use crate::human::{Human, Mind};
-use crate::item::{Item, Inventory};
+use crate::item::{Item, Inventory, ItemMessage};
 use crate::world::{World, Container, Time};
 use crate::weather::Weather;
 
@@ -32,6 +37,22 @@ struct GameState {
     world: World,
     minds: Vec<Mind>,
     font: Asset<Font>,
+    inventory_senders: Vec<Sender<ItemMessage>>,
+    inventory_receivers: Vec<Receiver<ItemMessage>>,
+    paused: bool,
+    updates_per_tick: u8,
+    counter: u8,
+}
+
+impl GameState {
+    fn create_inventory(&mut self, capacity: f32) -> usize {
+        let index = self.world.inventories.len();
+        let (send, recv) = channel();
+        self.world.inventories.push(Inventory::new(capacity));
+        self.inventory_senders.push(send);
+        self.inventory_receivers.push(recv);
+        index
+    }
 }
 
 impl State for GameState {
@@ -59,71 +80,83 @@ impl State for GameState {
                 tile_costs[j][i] = raw_data[i][j];
             }
         }
-
+        
+        let font = Asset::new(Font::load("anonymous_pro.ttf"));
         let geo = Geography::new(tile_costs.clone(), 80, 60);
+        let mut gs = GameState {
+            world: World {
+                geography: geo,
+                time: Time::new(), 
+                humans: Vec::new(),
+                containers: Vec::new(),
+                weather: Weather::new(),
+                crops: Vec::new(),
+                inventories: Vec::new(),
+            },
+            minds: Vec::new(),
+            font: font,
+            inventory_senders: Vec::new(),
+            inventory_receivers: Vec::new(),
+            paused: false,
+            updates_per_tick: 1,
+            counter: 0,
+        };
 
-        let mut human = Human::new(Vector::new(50.5, 30.0));
+        let mut human = Human::new(Vector::new(50.5, 30.0), gs.create_inventory(100.0));
         let mind = Mind::new();
 
         let mut food_box = Container {
             location: Vector::new(39.5, 19.5),
-            inventory: Inventory::new(10e10),
+            inventory_id: gs.create_inventory(10e10),
         };
-        food_box.inventory.do_give_up_to(Item::Food, u32::MAX);
+        gs.world.inventories[food_box.inventory_id].do_give_up_to(Item::Food, u32::MAX);
         human.give_container(0);
 
-        let font = Asset::new(Font::load("anonymous_pro.ttf"));
+        gs.world.humans.push(human);
+        gs.minds.push(mind);
+        gs.world.containers.push(food_box);
 
-        Ok(GameState {
-            world: World {
-                geography: geo,
-                time: Time::new(), 
-                humans: vec![human],
-                containers: vec![food_box],
-                weather: Weather::new(),
-                crops: Vec::new(),
-            },
-            minds: vec![mind],
-            font: font,
-        })
+        Ok(gs)
     }
 
-    // fn event(&mut self, event: &Event, window: &mut Window) -> Result<()> {
-    //     match *event {
-    //         Event::Key(Key::Space, ButtonState::Pressed) => {
-    //         },
-    //         _ => (),
-    //     }
-    //     Ok(())
-    // }
+    fn event(&mut self, event: &Event, window: &mut Window) -> Result<()> {
+        match *event {
+            Event::Key(Key::Space, ButtonState::Pressed) => {
+                self.paused = ! self.paused;
+            },
+            Event::Key(Key::Left, ButtonState::Pressed) => {
+                if self.updates_per_tick < 64 {
+                    // self.updates_per_tick = self.updates_per_tick.wrapping_mul(2);
+                    self.updates_per_tick *= 2;
+                }
+            }
+            Event::Key(Key::Right, ButtonState::Pressed) => {
+                if self.updates_per_tick > 1 {
+                    // self.updates_per_tick = self.updates_per_tick.wrapping_div(2);
+                    self.updates_per_tick /= 2;
+                }
+            }
+            _ => (),
+        }
+        Ok(())
+    }
 
     fn update(&mut self, _window: &mut Window) -> Result<()> {
-        if self.world.time.is_new_day() {
-            self.world.weather.update();
-            let (sun, rain) = (self.world.weather.sun(), self.world.weather.rain());
-            for crop in self.world.crops.iter_mut() {
-                crop.grow(sun, rain);
+        if !self.paused && ({self.counter = self.counter.wrapping_add(1); self.counter} % self.updates_per_tick) == 0 {
+            if self.world.time.is_new_day() {
+                self.world.weather.update();
+                let (sun, rain) = (self.world.weather.sun(), self.world.weather.rain());
+                self.world.crops.par_iter_mut().for_each_with(self.inventory_senders.clone(), |senders, crop| crop.grow(sun, rain, senders));
             }
-        }
-        for human in self.world.humans.iter_mut() {
-            human.inventory.receive();
-        }
-        {
-            let world = &self.world;
-            for (human, mind) in self.world.humans.iter().zip(self.minds.iter_mut()) {
-                mind.think(human, world);
+            {
+                let world = &self.world;
+                self.minds.par_iter_mut().zip(&self.world.humans).for_each(|(mind, human)| mind.think(&human, world));
             }
+
+            self.minds.par_iter_mut().zip(self.world.humans.par_iter_mut()).for_each_with(self.inventory_senders.clone(), |senders, (mind, human)| mind.act(human, senders));
+            self.inventory_receivers.par_iter_mut().zip(self.world.inventories.par_iter_mut()).for_each_with(self.inventory_senders.clone(), |senders, (recv, inventory)| inventory.receive_all(recv, senders));
+            self.world.time.tick();
         }
-        for (human, mind) in self.world.humans.iter_mut().zip(self.minds.iter_mut()) {
-            mind.act(human);
-        }
-        for container in self.world.containers.iter_mut() {
-            container.inventory.receive();
-        }
-        for crop in self.world.crops.iter_mut() {
-            crop.update();
-        }
-        self.world.time.tick();
         
         Ok(())
     }
