@@ -30,10 +30,11 @@ use std::u32;
 use rand::prelude::*;
 
 use crate::geography::Geography;
-use crate::human::{Human, Mind};
+use crate::human::{Human, Mind, Job};
 use crate::item::{Item, Inventory, ItemMessage};
 use crate::world::{World, Container, Time};
 use crate::weather::Weather;
+use crate::plant::Crop;
 
 struct GameState {
     world: World,
@@ -81,17 +82,22 @@ impl State for GameState {
             counter: 0,
         };
 
-        let mut human = Human::new(Vector::new(25.5, 15.0), gs.create_inventory(100.0));
+        let mut crop = Crop::new(Vector::new(29.5, 16.5), gs.create_inventory(10.0));
+        // TODO remove, just testing storage by making sure crop has grown some food
+        gs.world.inventories[crop.inventory_id].do_give_up_to(Item::Food, 10);
+
+        gs.world.crops.push(crop);
+
+
+        let mut human = Human::new(Vector::new(25.5, 15.0), gs.create_inventory(100.0), Job::Farmer(0));
         let mind = Mind::new(Vector::new(29.5, 14.5));
 
         let mut food_box = Container {
-            location: Vector::new(17.5, 9.5),
+            location: Vector::new(29.5, 14.5),
             inventory_id: gs.create_inventory(10e10),
         };
-        gs.world.inventories[food_box.inventory_id].do_give_up_to(Item::Food, u32::MAX);
+        gs.world.inventories[food_box.inventory_id].do_give_up_to(Item::Food, 100);
         human.give_container(0);
-
-        // TODO add some crops
 
         gs.world.humans.push(human);
         gs.minds.push(mind);

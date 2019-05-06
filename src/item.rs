@@ -17,6 +17,7 @@ pub enum ItemMessage {
     Trade((Item, u32), (Item, u32), usize),
     Take(Item, u32, usize),
     Remove(Item, u32),
+    Transfer(usize, Item, u32, usize),
 }
 
 pub struct Inventory {
@@ -79,6 +80,10 @@ impl Inventory {
             ItemMessage::Remove(taken_item, taken_quantity) => {
                 let _ = self.do_take_up_to(taken_item, taken_quantity);
             },
+            ItemMessage::Transfer(this_sender_id, item, quantity, other_sender_id) => {
+                let quantity = self.do_take_up_to(item, quantity);
+                let _ = senders[other_sender_id].send(ItemMessage::Give(item, quantity, this_sender_id));
+            }
         }
     }
     

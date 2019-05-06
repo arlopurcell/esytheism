@@ -1,8 +1,8 @@
 use num_traits::ops::saturating::Saturating;
+use quicksilver::geom::Vector;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::u32;
-use quicksilver::geom::Vector;
 
 pub struct Geography {
     pub tiles: Vec<Vec<Tile>>,
@@ -61,15 +61,15 @@ impl Geography {
             for y in 0..height {
                 col.push(Tile {
                     // width + 1 everywhere to account for newlines
-                    terrain_cost: match data[(width*2+2)*(2*y + 1) + (x*2 + 1)] as char {
+                    terrain_cost: match data[(width * 2 + 2) * (2 * y + 1) + (x * 2 + 1)] as char {
                         '+' => 1u16, // road
-                        _ => 5u16, // anything else
+                        _ => 5u16,   // anything else
                     },
                     walls: [
-                        data[(width*2 + 2)*2*y + (x*2 + 1)] == '-' as u8,
-                        data[(width*2 + 2)*(2*y+1) + (x*2 + 2)] == '|' as u8,
-                        data[(width*2 + 2)*(2*y+2) + (x*2 + 1)] == '-' as u8,
-                        data[(width*2 + 2)*(2*y+1) + x*2] == '|' as u8,
+                        data[(width * 2 + 2) * 2 * y + (x * 2 + 1)] == '-' as u8,
+                        data[(width * 2 + 2) * (2 * y + 1) + (x * 2 + 2)] == '|' as u8,
+                        data[(width * 2 + 2) * (2 * y + 2) + (x * 2 + 1)] == '-' as u8,
+                        data[(width * 2 + 2) * (2 * y + 1) + x * 2] == '|' as u8,
                     ],
                 })
             }
@@ -116,7 +116,11 @@ impl Geography {
                         let tentative_g_score = g_score
                             .get(&current.position)
                             .unwrap()
-                            .saturating_add(self.get_cost(&current.position, &neighbor, position_index));
+                            .saturating_add(self.get_cost(
+                                &current.position,
+                                &neighbor,
+                                position_index,
+                            ));
                         let old_g_score = g_score.get(&neighbor).unwrap_or(&u32::MAX);
                         if tentative_g_score < *old_g_score {
                             open_set.push(PathState {
@@ -152,7 +156,12 @@ impl Geography {
         neighbors
     }
 
-    fn get_cost(&self, current_point: &TilePoint, neighbor_point: &TilePoint, position_index: usize) -> u32 {
+    fn get_cost(
+        &self,
+        current_point: &TilePoint,
+        neighbor_point: &TilePoint,
+        position_index: usize,
+    ) -> u32 {
         let current_tile = &self.tiles[current_point.x][current_point.y];
         let neighbor_tile = &self.tiles[neighbor_point.x][neighbor_point.y];
         if current_tile.is_wall_to(position_index) || neighbor_tile.is_wall_from(position_index) {
@@ -179,6 +188,9 @@ impl TilePoint {
     }
 
     pub fn from_vector(v: &Vector) -> TilePoint {
-        TilePoint { x: v.x.floor() as usize, y: v.y.floor() as usize }
+        TilePoint {
+            x: v.x.floor() as usize,
+            y: v.y.floor() as usize,
+        }
     }
 }

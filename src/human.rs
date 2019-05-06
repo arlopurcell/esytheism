@@ -1,6 +1,7 @@
 use crate::geography::{Geography, TilePoint};
 use crate::world::{World, Container, TICKS_PER_MINUTE};
 use crate::item::{Item, Inventory, ItemMessage};
+use crate::plant::Crop;
 
 use std::sync::mpsc::Sender;
 use std::cmp::Ordering;
@@ -27,6 +28,7 @@ enum Activity {
     Idle,
     Eating(EatingState),
     Sleeping,
+    Working(WorkState),
 }
 
 enum EatingState {
@@ -34,13 +36,24 @@ enum EatingState {
     Finding,
 }
 
+enum WorkState {
+    Commuting,
+    Working,
+    Storing,
+}
+
+pub enum Job {
+    Farmer(usize), // crop id
+}
+
 pub struct Human {
     pub location: Vector,
     pub inventory_id: usize,
     pub fatigue: f32,
     pub hunger: f32,
-    owned_container_indeces: Vec<usize>, // should this be a HashSet to handle duplicates?
+    owned_container_indeces: Vec<usize>, // should this be a HashSet to handle duplicates? or just one at their home?
     speed: f32,
+    job: Job,
 }
 
 pub struct Mind {
@@ -54,6 +67,8 @@ pub struct Mind {
     meal_size: u32,
 
     target_inventory_id: Option<usize>,
+
+    progress: u32,
 
     wait: u32,
     travel_vector: Option<Vector>,
@@ -77,7 +92,7 @@ impl Ord for MinFloat {
 }
 
 impl Human {
-    pub fn new(location: Vector, inventory_id: usize) -> Human {
+    pub fn new(location: Vector, inventory_id: usize, job: Job) -> Human {
         Human {
             location: location,
             inventory_id: inventory_id,
@@ -85,6 +100,7 @@ impl Human {
             fatigue: 80.0,
             hunger: 0.0,
             owned_container_indeces: Vec::new(),
+            job: job,
         }
     }
 
@@ -137,6 +153,7 @@ impl Mind {
             meal_size: 0,
 
             target_inventory_id: None,
+            progress: 0,
 
             wait: 0,
             travel_vector: None,
@@ -150,6 +167,9 @@ impl Mind {
             Activity::Sleeping => "Sleeping",
             Activity::Eating(EatingState::Eating) => "Eating",
             Activity::Eating(EatingState::Finding) => "Find Food",
+            Activity::Working(WorkState::Commuting) => "Work: Commuting",
+            Activity::Working(WorkState::Working) => "Work: Working",
+            Activity::Working(WorkState::Storing) => "Work: Storing",
         }
     }
 
@@ -179,6 +199,7 @@ impl Mind {
             self.meal_size = human.daily_food(world) / 2;
             self.had_breakfast = false;
             self.had_dinner = false;
+            self.progress = 0;
         }
 
         // think
@@ -191,6 +212,8 @@ impl Mind {
                     let current_hours = world.time.hour;
                     if current_hours > 6 && !self.had_breakfast {
                         self.state = Activity::Eating(EatingState::Finding);
+                    } else if current_hours > 7 && self.progress == 0 {
+                        self.state = Activity::Working(WorkState::Commuting);
                     } else if current_hours > 17 && !self.had_dinner {
                         self.state = Activity::Eating(EatingState::Finding);
                     } else if human.fatigue > 80.0 {
@@ -212,8 +235,6 @@ impl Mind {
                             food_containers.sort_by_key(|container| MinFloat(human.location.distance(container.location)));
                             if let Some(container) = food_containers.first() {
                                 if TilePoint::from_vector(&container.location) == TilePoint::from_vector(&human.location) {
-                                    // container.inventory(world).sender().send(ItemMessage::Take(Item::Food, meal_size, human.inventory.sender()));
-                                    // TODO if message doesn't send, do something
                                     self.target_inventory_id = Some(container.inventory_id);
                                 } else {
                                     self.set_goal(human, container.location, &world.geography);
@@ -231,6 +252,44 @@ impl Mind {
                         }
                         self.state = Activity::Idle;
                     },
+                },
+
+                Activity::Working(work_state) => match &human.job {
+                    Job::Farmer(crop_id) => match work_state {
+                        WorkState::Commuting => if self.current_path.is_empty() {
+                            let crop = &world.crops[*crop_id];
+                            if TilePoint::from_vector(&human.location) != TilePoint::from_vector(&crop.location) {
+                                self.set_goal(human, crop.location, &world.geography);
+                            } else {
+                                self.state = Activity::Working(WorkState::Working);
+                                self.target_inventory_id = Some(crop.inventory_id);
+                            }
+                        },
+                        WorkState::Working => {
+                            // TODO wander around crop tile
+                            if self.progress > TICKS_PER_MINUTE as u32 * 60 * 6 { // work 6 hours / day
+                                self.state = Activity::Working(WorkState::Storing);
+                                self.target_inventory_id = None;
+                            }
+                        },
+                        WorkState::Storing => if self.current_path.is_empty() {
+                            if world.inventories[human.inventory_id].count(Item::Food) != 0 {
+                                // TODO find an container with enough space. or at least exclude
+                                // containers with no space
+                                let mut food_containers: Vec<&Container> = human.owned_container_indeces.iter().map(|&i| &world.containers[i]).collect();
+                                food_containers.sort_by_key(|container| MinFloat(human.location.distance(container.location)));
+                                if let Some(container) = food_containers.first() {
+                                    if TilePoint::from_vector(&container.location) == TilePoint::from_vector(&human.location) {
+                                        self.target_inventory_id = Some(container.inventory_id);
+                                    } else {
+                                        self.set_goal(human, container.location, &world.geography);
+                                    }
+                                }
+                            } else {
+                                self.state = Activity::Idle;
+                            }
+                        },
+                    }
                 },
 
                 Activity::Sleeping => if human.fatigue <= 0.0 {
@@ -272,6 +331,8 @@ impl Mind {
     pub fn act(&mut self, human: &mut Human, inventory_senders: &Vec<Sender<ItemMessage>>) {
         if self.wait == 0 {
             match &self.state {
+                Activity::Idle => (),
+
                 Activity::Eating(eating_state) => match eating_state {
                     EatingState::Eating => {
                         inventory_senders[human.inventory_id].send(ItemMessage::Remove(Item::Food, 1));
@@ -284,13 +345,31 @@ impl Mind {
                     },
                 },
 
+                Activity::Working(work_state) => match &human.job {
+                    Job::Farmer(_) => match work_state {
+                        WorkState::Commuting => (), // let travel do the work
+                        WorkState::Working => {
+                            self.progress += 1;
+                            if self.progress > TICKS_PER_MINUTE as u32 * 60 * 6 { // work 6 hours / day
+                                if let Some(target_inventory_id) = self.target_inventory_id {
+                                    inventory_senders[target_inventory_id].send(ItemMessage::Take(Item::Food, 50, human.inventory_id)); // TODO calculate remaining capacity in think/perceive and use that
+                                    self.target_inventory_id = None;
+                                    self.wait = 2;
+                                } // TODO else?
+                            }
+                        },
+                        WorkState::Storing => if let Some(target_inventory_id) = self.target_inventory_id {
+                            inventory_senders[human.inventory_id].send(ItemMessage::Transfer(human.inventory_id, Item::Food, 100, target_inventory_id)); // TODO is this the best way to give all?
+                            self.target_inventory_id = None;
+                        },
+                    }
+                },
+
                 Activity::Sleeping => if self.current_path.is_empty() {
                     human.fatigue -= SLEEP_PER_TICK
                 },
-                _ => (),
             }
         }
-        // TODO make these on a curve (get tired/hungry slower when you're low)
         human.fatigue += FATIGUE_PER_TICK;
 
         if human.hunger < 80.0 {
