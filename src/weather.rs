@@ -1,5 +1,5 @@
+use rand::distributions::{Distribution, Normal};
 use rand::prelude::*;
-use rand::distributions::{Normal, Distribution};
 
 pub struct Weather {
     current: f64,

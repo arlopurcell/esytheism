@@ -1,42 +1,40 @@
+mod gamestate;
 mod geography;
 mod human;
 mod item;
-mod world;
-mod weather;
 mod plant;
-mod gamestate;
+mod weather;
+mod world;
 
-use rand::distributions::{Distribution, Uniform, Normal};
+use rand::distributions::{Distribution, Normal, Uniform};
 use rayon::prelude::*;
 
 use quicksilver::{
-    Result,
-    geom::{Rectangle, Vector, Circle},
-    graphics::{Background::Col, Background::Img, Color, Image, Font, FontStyle},
+    geom::{Circle, Rectangle, Vector},
+    graphics::{Background::Col, Background::Img, Color, Font, FontStyle, Image},
     input::{ButtonState, Key},
-    lifecycle::{Settings, State, Window, run, Asset, Event},
-    load_file,
-    Future,
+    lifecycle::{run, Asset, Event, Settings, State, Window},
+    load_file, Future, Result,
 };
 
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
-use std::sync::mpsc::{channel, Sender, Receiver};
-use std::collections::HashMap;
 use std::num::Wrapping;
+use std::sync::mpsc::{channel, Receiver, Sender};
 
 use std::u32;
 
 use rand::prelude::*;
 
-use crate::geography::Geography;
-use crate::human::{Human, Mind, Job};
-use crate::item::{Item, Inventory, ItemMessage};
-use crate::world::{World, Container, Time};
-use crate::weather::Weather;
-use crate::plant::Crop;
 use crate::gamestate::GameState;
+use crate::geography::Geography;
+use crate::human::{Human, Job, Mind};
+use crate::item::{Inventory, Item, ItemMessage};
+use crate::plant::Crop;
+use crate::weather::Weather;
+use crate::world::{Container, Time, World};
 
 struct Engine {
     game_state: GameState,
@@ -50,9 +48,8 @@ struct Engine {
 
 impl State for Engine {
     fn new() -> Result<Engine> {
-
         let font = Asset::new(Font::load("anonymous_pro.ttf"));
-        Ok(Engine{
+        Ok(Engine {
             game_state: GameState::new(),
             font: font,
             paused: false,
@@ -64,8 +61,8 @@ impl State for Engine {
     fn event(&mut self, event: &Event, window: &mut Window) -> Result<()> {
         match *event {
             Event::Key(Key::Space, ButtonState::Pressed) => {
-                self.paused = ! self.paused;
-            },
+                self.paused = !self.paused;
+            }
             Event::Key(Key::Left, ButtonState::Pressed) => {
                 if self.updates_per_tick < 64 {
                     self.updates_per_tick *= 2;
@@ -82,14 +79,20 @@ impl State for Engine {
     }
 
     fn update(&mut self, _window: &mut Window) -> Result<()> {
-        if !self.paused && ({self.counter = self.counter.wrapping_add(1); self.counter} % self.updates_per_tick) == 0 {
+        if !self.paused
+            && ({
+                self.counter = self.counter.wrapping_add(1);
+                self.counter
+            } % self.updates_per_tick)
+                == 0
+        {
             self.game_state.update();
         }
         if !self.paused {
             let updates_per_tick = self.updates_per_tick;
             self.game_state.do_travel(updates_per_tick);
         }
-        
+
         Ok(())
     }
 
@@ -98,22 +101,37 @@ impl State for Engine {
         for x in 0..self.game_state.world.geography.width {
             for y in 0..self.game_state.world.geography.height {
                 let tile = &self.game_state.world.geography.tiles[x][y];
-                window.draw(&Rectangle::new((x as u32 * 20, y as u32 * 20), (20, 20)), Col(match tile.terrain_cost {
-                    1 => Color::from_rgba(191, 156, 116, 1.0),
-                    _ => Color::from_rgba(127, 234, 117, 1.0),
-                }));
+                window.draw(
+                    &Rectangle::new((x as u32 * 20, y as u32 * 20), (20, 20)),
+                    Col(match tile.terrain_cost {
+                        1 => Color::from_rgba(191, 156, 116, 1.0),
+                        _ => Color::from_rgba(127, 234, 117, 1.0),
+                    }),
+                );
                 // draw walls
                 if tile.walls[0] {
-                    window.draw(&Rectangle::new((x as i32 * 20 - 1, y as i32 * 20 - 1), (22, 2)), Col(Color::BLACK));
+                    window.draw(
+                        &Rectangle::new((x as i32 * 20 - 1, y as i32 * 20 - 1), (22, 2)),
+                        Col(Color::BLACK),
+                    );
                 }
                 if tile.walls[1] {
-                    window.draw(&Rectangle::new((x as i32 * 20 + 19, y as i32 * 20 - 1), (2, 22)), Col(Color::BLACK));
+                    window.draw(
+                        &Rectangle::new((x as i32 * 20 + 19, y as i32 * 20 - 1), (2, 22)),
+                        Col(Color::BLACK),
+                    );
                 }
                 if tile.walls[2] {
-                    window.draw(&Rectangle::new((x as i32 * 20 - 1, y as i32 * 20  + 19), (22, 2)), Col(Color::BLACK));
+                    window.draw(
+                        &Rectangle::new((x as i32 * 20 - 1, y as i32 * 20 + 19), (22, 2)),
+                        Col(Color::BLACK),
+                    );
                 }
                 if tile.walls[3] {
-                    window.draw(&Rectangle::new((x as i32 * 20 - 1, y as i32 * 20 - 1), (2, 22)), Col(Color::BLACK));
+                    window.draw(
+                        &Rectangle::new((x as i32 * 20 - 1, y as i32 * 20 - 1), (2, 22)),
+                        Col(Color::BLACK),
+                    );
                 }
             }
         }
@@ -135,17 +153,23 @@ impl State for Engine {
                 let style = FontStyle::new(48.0, Color::WHITE);
                 let text = format!("state: {}", mind.state());
                 let text_img = font.render(&text, &style).unwrap();
-                window.draw(&Rectangle::new((210, 553), text_img.area().size()), Img(&text_img));
+                window.draw(
+                    &Rectangle::new((210, 553), text_img.area().size()),
+                    Img(&text_img),
+                );
                 Ok(())
             });
         }
-        
+
         let world_time = &self.game_state.world.time;
         self.font.execute(|font| {
             window.draw(&Rectangle::new((570, 0), (230, 20)), Col(Color::BLACK));
             let style = FontStyle::new(18.0, Color::WHITE);
             let time_img = font.render(&world_time.date_string(), &style).unwrap();
-            window.draw(&Rectangle::new((572, 1), time_img.area().size()), Img(&time_img));
+            window.draw(
+                &Rectangle::new((572, 1), time_img.area().size()),
+                Img(&time_img),
+            );
             Ok(())
         });
         Ok(())

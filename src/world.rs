@@ -3,8 +3,8 @@ use quicksilver::geom::Vector;
 use crate::geography::Geography;
 use crate::human::Human;
 use crate::item::Inventory;
-use crate::weather::Weather;
 use crate::plant::Crop;
+use crate::weather::Weather;
 
 pub const TICKS_PER_MINUTE: u8 = 1;
 
@@ -57,7 +57,8 @@ impl Time {
                 if self.hour % 24 == 0 {
                     self.hour = 0;
                     self.day += 1;
-                    if self.day % 30 == 0 { // all months have 30 days
+                    if self.day % 30 == 0 {
+                        // all months have 30 days
                         self.day = 0;
                         self.month += 1;
                         if self.month % 12 == 0 {
@@ -69,7 +70,6 @@ impl Time {
                 }
             }
         }
-
     }
 
     pub fn is_new_day(&self) -> bool {
@@ -79,7 +79,7 @@ impl Time {
     pub fn date_string(&self) -> String {
         format!(
             "{weekday}, {month} {day:02}, {year:04} {hour:02}:{minute:02}",
-            weekday=match &self.weekday {
+            weekday = match &self.weekday {
                 0 => "Mon",
                 1 => "Tue",
                 2 => "Wed",
@@ -88,7 +88,7 @@ impl Time {
                 5 => "Sat",
                 _ => "Sun",
             },
-            month=match &self.month {
+            month = match &self.month {
                 0 => "Jan",
                 1 => "Feb",
                 2 => "Mar",
@@ -102,10 +102,10 @@ impl Time {
                 10 => "Nov",
                 _ => "Dec",
             },
-            day=self.day + 1,
-            year=self.year + 1,
-            hour=self.hour,
-            minute=(self.minute / 10) * 10,
+            day = self.day + 1,
+            year = self.year + 1,
+            hour = self.hour,
+            minute = (self.minute / 10) * 10,
         )
     }
 }

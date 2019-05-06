@@ -2,7 +2,7 @@ use std::sync::mpsc::Sender;
 
 use quicksilver::geom::Vector;
 
-use crate::item::{Item, Inventory, ItemMessage};
+use crate::item::{Inventory, Item, ItemMessage};
 
 pub struct Crop {
     pub location: Vector,
@@ -26,7 +26,11 @@ impl Crop {
         // let growth = self.inventory.do_take_up_to(Item::Water, sun);
         // self.inventory.do_give_up_to(Item::Food, growth);
         for _ in 0..sun {
-            sender.send(ItemMessage::Trade((Item::Food, 1), (Item::Water, 1), self.inventory_id));
+            sender.send(ItemMessage::Trade(
+                (Item::Food, 1),
+                (Item::Water, 1),
+                self.inventory_id,
+            ));
         }
     }
 }
