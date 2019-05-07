@@ -36,7 +36,7 @@ use crate::plant::Crop;
 use crate::weather::Weather;
 use crate::world::{Container, Time, World};
 
-pub const SCREEN_SIZE: Vector = Vector {x: 800.0, y: 600.0};
+pub const SCREEN_SIZE: Vector = Vector {x: 1200.0, y: 900.0};
 
 struct Engine {
     game_state: GameState,
@@ -195,12 +195,12 @@ impl State for Engine {
 
         for mind in &self.game_state.minds {
             self.font.execute(|font| {
-                window.draw(&Rectangle::new((200, 550), (400, 50)), Col(Color::BLACK));
+                window.draw(&Rectangle::new(((SCREEN_SIZE.x - 400.0) / 2.0, SCREEN_SIZE.y - 50.0), (400, 50)), Col(Color::BLACK));
                 let style = FontStyle::new(48.0, Color::WHITE);
                 let text = format!("state: {}", mind.state());
                 let text_img = font.render(&text, &style).unwrap();
                 window.draw(
-                    &Rectangle::new((210, 553), text_img.area().size()),
+                    &Rectangle::new(((SCREEN_SIZE.x - 400.0) / 2.0 + 10.0, SCREEN_SIZE.y - 47.0), text_img.area().size()),
                     Img(&text_img),
                 );
                 Ok(())
@@ -209,11 +209,11 @@ impl State for Engine {
 
         let world_time = &self.game_state.world.time;
         self.font.execute(|font| {
-            window.draw(&Rectangle::new((570, 0), (230, 20)), Col(Color::BLACK));
+            window.draw(&Rectangle::new((SCREEN_SIZE.x - 230.0, 0), (230, 20)), Col(Color::BLACK));
             let style = FontStyle::new(18.0, Color::WHITE);
             let time_img = font.render(&world_time.date_string(), &style).unwrap();
             window.draw(
-                &Rectangle::new((572, 1), time_img.area().size()),
+                &Rectangle::new((SCREEN_SIZE.x - 228.0, 1), time_img.area().size()),
                 Img(&time_img),
             );
             Ok(())
@@ -224,5 +224,5 @@ impl State for Engine {
 }
 
 fn main() {
-    run::<Engine>("Esytheism", Vector::new(800, 600), Settings::default());
+    run::<Engine>("Esytheism", SCREEN_SIZE, Settings::default());
 }
