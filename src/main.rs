@@ -40,15 +40,13 @@ pub const SCREEN_SIZE: Vector = Vector {x: 1200.0, y: 900.0};
 
 struct Engine {
     game_state: GameState,
-    // TOOD mesh: Mesh,
-    // TODO screen_size: Vector,
     font: Asset<Font>,
     paused: bool,
     updates_per_tick: u8,
     counter: u8,
-    // camera: Rectangle,
-    scale: f32,
-    camera: Vector,
+
+    scale: f32, // higher means more zoomed out
+    camera: Vector, // represents center of window
 }
 
 impl Engine {
@@ -68,7 +66,6 @@ impl State for Engine {
             paused: false,
             updates_per_tick: 1,
             counter: 0,
-            // camera: Rectangle::new_sized((800, 600)),
             camera: SCREEN_SIZE / 2,
             scale: 1.0,
         })
@@ -99,6 +96,7 @@ impl State for Engine {
                 } else {
                     -10.0 / moved.y
                 };
+                println!("scale: {}", self.scale);
             }
             _ => (),
         }
