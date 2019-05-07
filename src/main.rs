@@ -10,9 +10,9 @@ use rand::distributions::{Distribution, Normal, Uniform};
 use rayon::prelude::*;
 
 use quicksilver::{
-    geom::{Circle, Rectangle, Vector},
-    graphics::{Background::Col, Background::Img, Color, Font, FontStyle, Image},
-    input::{ButtonState, Key},
+    geom::{Circle, Rectangle, Vector, Transform},
+    graphics::{Background::Col, Background::Img, Color, Font, FontStyle, Image, View},
+    input::{ButtonState, Key, MouseButton},
     lifecycle::{run, Asset, Event, Settings, State, Window},
     load_file, Future, Result,
 };
@@ -36,6 +36,8 @@ use crate::plant::Crop;
 use crate::weather::Weather;
 use crate::world::{Container, Time, World};
 
+pub const SCREEN_SIZE: Vector = Vector {x: 800.0, y: 600.0};
+
 struct Engine {
     game_state: GameState,
     // TOOD mesh: Mesh,
@@ -44,6 +46,17 @@ struct Engine {
     paused: bool,
     updates_per_tick: u8,
     counter: u8,
+    // camera: Rectangle,
+    scale: f32,
+    camera: Vector,
+}
+
+impl Engine {
+    fn apply_camera(&self, top_left: Vector, size: Vector) -> Rectangle {
+        let camera_top_left = self.camera - (SCREEN_SIZE * self.scale / 2);
+        let top_left = (top_left - camera_top_left) / self.scale;
+        Rectangle::new(top_left, size / self.scale)
+    }
 }
 
 impl State for Engine {
@@ -55,6 +68,9 @@ impl State for Engine {
             paused: false,
             updates_per_tick: 1,
             counter: 0,
+            // camera: Rectangle::new_sized((800, 600)),
+            camera: SCREEN_SIZE / 2,
+            scale: 1.0,
         })
     }
 
@@ -62,16 +78,27 @@ impl State for Engine {
         match *event {
             Event::Key(Key::Space, ButtonState::Pressed) => {
                 self.paused = !self.paused;
-            }
+            },
             Event::Key(Key::Left, ButtonState::Pressed) => {
                 if self.updates_per_tick < 64 {
                     self.updates_per_tick *= 2;
                 }
-            }
+            },
             Event::Key(Key::Right, ButtonState::Pressed) => {
                 if self.updates_per_tick > 1 {
                     self.updates_per_tick /= 2;
                 }
+            },
+            Event::MouseButton(MouseButton::Left, ButtonState::Pressed) => {
+                let camera_top_left = self.camera - (SCREEN_SIZE * self.scale / 2);
+                self.camera = window.mouse().pos() * self.scale + camera_top_left;
+            },
+            Event::MouseWheel(moved) => {
+                self.scale = self.scale * if moved.y > 0.0 {
+                    moved.y / 10.0
+                } else {
+                    -10.0 / moved.y
+                };
             }
             _ => (),
         }
@@ -98,45 +125,64 @@ impl State for Engine {
 
     fn draw(&mut self, window: &mut Window) -> Result<()> {
         window.clear(Color::BLACK)?;
+
+        // draw terrain
         for x in 0..self.game_state.world.geography.width {
             for y in 0..self.game_state.world.geography.height {
                 let tile = &self.game_state.world.geography.tiles[x][y];
                 window.draw(
-                    &Rectangle::new((x as u32 * 20, y as u32 * 20), (20, 20)),
+                    &self.apply_camera(Vector::new(x as u32 * 20, y as u32 * 20), Vector::new(20, 20)),
+                    // &Rectangle::new((x as u32 * 20, y as u32 * 20), (20, 20)),
                     Col(match tile.terrain_cost {
                         1 => Color::from_rgba(191, 156, 116, 1.0),
                         _ => Color::from_rgba(127, 234, 117, 1.0),
                     }),
                 );
-                // draw walls
+            }
+        }
+        
+        // draw walls
+        for x in 0..self.game_state.world.geography.width {
+            for y in 0..self.game_state.world.geography.height {
+                let tile = &self.game_state.world.geography.tiles[x][y];
                 if tile.walls[0] {
                     window.draw(
-                        &Rectangle::new((x as i32 * 20 - 1, y as i32 * 20 - 1), (22, 2)),
+                        // &Rectangle::new((x as i32 * 20 - 1, y as i32 * 20 - 1), (22, 2)),
+                        &self.apply_camera(Vector::new(x as i32 * 20 - 1, y as i32 * 20 - 1), Vector::new(22, 2)),
                         Col(Color::BLACK),
                     );
                 }
                 if tile.walls[1] {
                     window.draw(
-                        &Rectangle::new((x as i32 * 20 + 19, y as i32 * 20 - 1), (2, 22)),
+                        // &Rectangle::new((x as i32 * 20 + 19, y as i32 * 20 - 1), (2, 22)),
+                        &self.apply_camera(Vector::new(x as i32 * 20 + 19, y as i32 * 20 - 1), Vector::new(2, 22)),
                         Col(Color::BLACK),
                     );
                 }
                 if tile.walls[2] {
                     window.draw(
-                        &Rectangle::new((x as i32 * 20 - 1, y as i32 * 20 + 19), (22, 2)),
+                        // &Rectangle::new((x as i32 * 20 - 1, y as i32 * 20 + 19), (22, 2)),
+                        &self.apply_camera(Vector::new(x as i32 * 20 - 1, y as i32 * 20 + 19), Vector::new(22, 2)),
                         Col(Color::BLACK),
                     );
                 }
                 if tile.walls[3] {
                     window.draw(
-                        &Rectangle::new((x as i32 * 20 - 1, y as i32 * 20 - 1), (2, 22)),
+                        // &Rectangle::new((x as i32 * 20 - 1, y as i32 * 20 - 1), (2, 22)),
+                        &self.apply_camera(Vector::new(x as i32 * 20 - 1, y as i32 * 20 - 1), Vector::new(2, 22)),
                         Col(Color::BLACK),
                     );
                 }
             }
         }
+
+        // draw humans
         for human in &self.game_state.world.humans {
-            window.draw(&Circle::new(human.location * 20.0, 3.0), Col(Color::RED));
+            window.draw(
+                // &Circle::new(human.location * 20.0, 3.0), 
+                &self.apply_camera(human.location * 20 - Vector::new(5, 5), Vector::new(10, 10)),
+                Col(Color::RED),
+            );
             // self.font.execute(|font| {
             //     window.draw(&Rectangle::new((200, 550), (400, 40)), Col(Color::BLACK));
             //     let style = FontStyle::new(36.0, Color::WHITE);
@@ -174,6 +220,7 @@ impl State for Engine {
         });
         Ok(())
     }
+
 }
 
 fn main() {
