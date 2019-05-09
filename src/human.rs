@@ -110,6 +110,19 @@ impl Human {
         }
     }
 
+    pub fn description_lines(&self, world: &World) -> Vec<String> {
+        let mut lines = vec!["Human: <name>".to_string()];
+        lines.push(format!("Fatigue: {:.2}", self.fatigue));
+        lines.push(format!("Hunger: {:.2}", self.hunger));
+        lines.push(format!("Job: {}", match self.job {
+            Job::Farmer(_) => "Farmer",
+        }));
+
+        let mut inventory_lines = world.inventories[self.inventory_id].description_lines();
+        lines.append(&mut inventory_lines);
+        lines
+    }
+
     fn owned_item_count(&self, item: Item, world: &World) -> u32 {
         let container_count: u32 = self
             .owned_container_indeces

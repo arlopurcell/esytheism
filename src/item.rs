@@ -45,6 +45,21 @@ impl Inventory {
         }
     }
 
+    pub fn description_lines(&self) -> Vec<String> {
+        let mut lines = vec!["Inventory".to_string()];
+        lines.push(format!("Capacity: {:.2}/{:.2}", self.weight(), self.capacity));
+        for (item, count) in self.items.iter() {
+            if *count > 0 {
+                lines.push(format!("{}: {}", match item {
+                    Item::Food => "Food",
+                    Item::Money => "Money",
+                    Item::Water => "Water",
+                }, count))
+            }
+        }
+        lines
+    }
+
     pub fn receive_all(
         &mut self,
         receiver: &Receiver<ItemMessage>,

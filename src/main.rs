@@ -29,7 +29,7 @@ use std::u32;
 use rand::prelude::*;
 
 use crate::gamestate::GameState;
-use crate::geography::Geography;
+use crate::geography::{Geography, TilePoint};
 use crate::human::{Human, Job, Mind};
 use crate::item::{Inventory, Item, ItemMessage};
 use crate::plant::Crop;
@@ -47,6 +47,15 @@ struct Engine {
 
     scale: f32, // higher means more zoomed out
     camera: Vector, // represents center of window
+
+    selected: Selected,
+}
+
+enum Selected {
+    None,
+    Human(usize),
+    Crop(usize),
+    Container(usize),
 }
 
 impl Engine {
@@ -68,6 +77,7 @@ impl State for Engine {
             counter: 0,
             camera: SCREEN_SIZE / 2,
             scale: 1.0,
+            selected: Selected::None,
         })
     }
 
@@ -89,6 +99,19 @@ impl State for Engine {
             Event::MouseButton(MouseButton::Left, ButtonState::Pressed) => {
                 let camera_top_left = self.camera - (SCREEN_SIZE * self.scale / 2);
                 self.camera = window.mouse().pos() * self.scale + camera_top_left;
+
+                let click_tile = TilePoint::from_vector(&(self.camera / 20.0));
+                let human_loc = TilePoint::from_vector(&self.game_state.world.humans[0].location);
+                self.selected = 
+                    if let Some((index, _)) = self.game_state.world.humans.iter().enumerate().find(|(_, human)| TilePoint::from_vector(&human.location) == click_tile) {
+                        Selected::Human(index)
+                    } else if let Some((index, _)) = self.game_state.world.crops.iter().enumerate().find(|(_, crop)| TilePoint::from_vector(&crop.location) == click_tile) {
+                        Selected::Crop(index)
+                    } else if let Some((index, _)) = self.game_state.world.containers.iter().enumerate().find(|(_, container)| TilePoint::from_vector(&container.location) == click_tile) {
+                        Selected::Crop(index)
+                    } else {
+                        Selected::None
+                    };
             },
             Event::MouseWheel(moved) => {
                 self.scale = self.scale * if moved.y > 0.0 {
@@ -96,7 +119,6 @@ impl State for Engine {
                 } else {
                     -10.0 / moved.y
                 };
-                println!("scale: {}", self.scale);
             }
             _ => (),
         }
@@ -178,7 +200,7 @@ impl State for Engine {
         for human in &self.game_state.world.humans {
             window.draw(
                 // &Circle::new(human.location * 20.0, 3.0), 
-                &self.apply_camera(human.location * 20 - Vector::new(5, 5), Vector::new(10, 10)),
+                &self.apply_camera(human.location * 20 - Vector::new(2, 2), Vector::new(4, 4)),
                 Col(Color::RED),
             );
             // self.font.execute(|font| {
@@ -216,6 +238,42 @@ impl State for Engine {
             );
             Ok(())
         });
+
+        let lines = match self.selected {
+            Selected::Human(index) => {
+                let human = &self.game_state.world.humans[index];
+                let top_left = human.location * 20 - Vector::new(3, 3);
+                let top_right = top_left + Vector::new(4, 0);
+                let bottom_left = top_left + Vector::new(0, 4);
+                let vert_size = Vector::new(1, 5);
+                let horiz_size = Vector::new(5, 1);
+                window.draw(&self.apply_camera(top_left, horiz_size), Col(Color::YELLOW));
+                window.draw(&self.apply_camera(top_right, vert_size), Col(Color::YELLOW));
+                window.draw(&self.apply_camera(bottom_left, horiz_size), Col(Color::YELLOW));
+                window.draw(&self.apply_camera(top_left, vert_size), Col(Color::YELLOW));
+
+                Some(human.description_lines(&self.game_state.world))
+            },
+            _ => None,
+        };
+        if let Some(lines) = lines {
+            let height = (5 + lines.len() * 20) as u32;
+            window.draw(
+                &Rectangle::new((4, 4), (200, height)),
+                Col(Color::from_rgba(0, 0, 0, 0.5)),
+            );
+            self.font.execute(|font| {
+                let style = FontStyle::new(14.0, Color::WHITE);
+                for (index, line) in lines.iter().enumerate() {
+                    let text_img = font.render(&line, &style).unwrap();
+                    window.draw(
+                        &Rectangle::new((8, (8 + index * 20) as u32), text_img.area().size()),
+                        Img(&text_img),
+                    );
+                }
+                Ok(())
+            });
+        }
         Ok(())
     }
 
