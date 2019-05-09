@@ -102,6 +102,7 @@ impl State for Engine {
 
                 let click_tile = TilePoint::from_vector(&(self.camera / 20.0));
                 let human_loc = TilePoint::from_vector(&self.game_state.world.humans[0].location);
+                // TODO track click based on actual location and size of thing, not tile approximation
                 self.selected = 
                     if let Some((index, _)) = self.game_state.world.humans.iter().enumerate().find(|(_, human)| TilePoint::from_vector(&human.location) == click_tile) {
                         Selected::Human(index)
@@ -152,7 +153,6 @@ impl State for Engine {
                 let tile = &self.game_state.world.geography.tiles[x][y];
                 window.draw(
                     &self.apply_camera(Vector::new(x as u32 * 20, y as u32 * 20), Vector::new(20, 20)),
-                    // &Rectangle::new((x as u32 * 20, y as u32 * 20), (20, 20)),
                     Col(match tile.terrain_cost {
                         1 => Color::from_rgba(191, 156, 116, 1.0),
                         _ => Color::from_rgba(127, 234, 117, 1.0),
@@ -167,28 +167,24 @@ impl State for Engine {
                 let tile = &self.game_state.world.geography.tiles[x][y];
                 if tile.walls[0] {
                     window.draw(
-                        // &Rectangle::new((x as i32 * 20 - 1, y as i32 * 20 - 1), (22, 2)),
                         &self.apply_camera(Vector::new(x as i32 * 20 - 1, y as i32 * 20 - 1), Vector::new(22, 2)),
                         Col(Color::BLACK),
                     );
                 }
                 if tile.walls[1] {
                     window.draw(
-                        // &Rectangle::new((x as i32 * 20 + 19, y as i32 * 20 - 1), (2, 22)),
                         &self.apply_camera(Vector::new(x as i32 * 20 + 19, y as i32 * 20 - 1), Vector::new(2, 22)),
                         Col(Color::BLACK),
                     );
                 }
                 if tile.walls[2] {
                     window.draw(
-                        // &Rectangle::new((x as i32 * 20 - 1, y as i32 * 20 + 19), (22, 2)),
                         &self.apply_camera(Vector::new(x as i32 * 20 - 1, y as i32 * 20 + 19), Vector::new(22, 2)),
                         Col(Color::BLACK),
                     );
                 }
                 if tile.walls[3] {
                     window.draw(
-                        // &Rectangle::new((x as i32 * 20 - 1, y as i32 * 20 - 1), (2, 22)),
                         &self.apply_camera(Vector::new(x as i32 * 20 - 1, y as i32 * 20 - 1), Vector::new(2, 22)),
                         Col(Color::BLACK),
                     );
@@ -199,18 +195,9 @@ impl State for Engine {
         // draw humans
         for human in &self.game_state.world.humans {
             window.draw(
-                // &Circle::new(human.location * 20.0, 3.0), 
                 &self.apply_camera(human.location * 20 - Vector::new(2, 2), Vector::new(4, 4)),
                 Col(Color::RED),
             );
-            // self.font.execute(|font| {
-            //     window.draw(&Rectangle::new((200, 550), (400, 40)), Col(Color::BLACK));
-            //     let style = FontStyle::new(36.0, Color::WHITE);
-            //     let text = format!("hunger: {:.2}", human.hunger);
-            //     let text_img = font.render(&text, &style).unwrap();
-            //     window.draw(&Rectangle::new((210, 553), text_img.area().size()), Img(&text_img));
-            //     Ok(())
-            // });
         }
 
         for mind in &self.game_state.minds {
@@ -247,6 +234,7 @@ impl State for Engine {
                 let bottom_left = top_left + Vector::new(0, 4);
                 let vert_size = Vector::new(1, 5);
                 let horiz_size = Vector::new(5, 1);
+                // TODO make border aways 1px, regardless of zoom level
                 window.draw(&self.apply_camera(top_left, horiz_size), Col(Color::YELLOW));
                 window.draw(&self.apply_camera(top_right, vert_size), Col(Color::YELLOW));
                 window.draw(&self.apply_camera(bottom_left, horiz_size), Col(Color::YELLOW));
@@ -254,6 +242,7 @@ impl State for Engine {
 
                 Some(human.description_lines(&self.game_state.world))
             },
+            // TODO crop and containers
             _ => None,
         };
         if let Some(lines) = lines {
